@@ -1,0 +1,3 @@
+@echo off
+echo Running Phase 12 Data Export ^& Backups tests...
+npm run test:e2e -- --testPathPattern=phase12-data-export-backup.e2e-spec.ts --runInBand

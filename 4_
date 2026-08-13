@@ -1,0 +1,26 @@
+import 'reflect-metadata';
+import { AppDataSource } from '../src/config/data-source';
+import { Party } from '../src/modules/parties/entities/party.entity';
+
+async function verify() {
+  await AppDataSource.initialize();
+  try {
+    const randomUsers = await AppDataSource.getRepository(Party).find({
+      where: { partyType: 'random_user' as any },
+      relations: ['user', 'departments'],
+    });
+    console.log('Random user parties found:', randomUsers.length);
+    for (const party of randomUsers) {
+      console.log(
+        `- ${party.name} | user: ${party.user?.fullName ?? 'none'} | departments: ${party.departments?.map((d) => d.name).join(', ')}`,
+      );
+    }
+  } finally {
+    await AppDataSource.destroy();
+  }
+}
+
+void verify().catch((error: unknown) => {
+  console.error('Verification failed:', error);
+  process.exitCode = 1;
+});

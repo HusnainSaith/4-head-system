@@ -1,0 +1,66 @@
+{
+  "name": "4head-desktop",
+  "version": "1.0.3",
+  "private": true,
+  "description": "Self-contained Windows desktop edition of 4Head Poultry ERP",
+  "main": "main.cjs",
+  "scripts": {
+    "build:icon": "node scripts/make-icon.cjs",
+    "build:app": "node scripts/prepare.cjs",
+    "dist": "npm run build:icon && npm run build:app && electron-builder --win nsis portable",
+    "dist:installer": "npm run build:icon && npm run build:app && electron-builder --win nsis"
+  },
+  "dependencies": {
+    "@embedded-postgres/windows-x64": "latest",
+    "embedded-postgres": "latest"
+  },
+  "devDependencies": {
+    "electron": "latest",
+    "electron-builder": "latest",
+    "png-to-ico": "^3.0.2",
+    "sharp": "^0.35.3"
+  },
+  "build": {
+    "appId": "com.4head.poultryerp",
+    "productName": "4Head Poultry ERP",
+    "asar": false,
+    "files": [
+      "main.cjs",
+      "package.json",
+      "build/icon.png"
+    ],
+    "extraResources": [
+      {
+        "from": "runtime/backend",
+        "to": "backend"
+      },
+      {
+        "from": "runtime/frontend",
+        "to": "frontend"
+      }
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico",
+      "signExecutable": false
+    },
+    "nsis": {
+      "artifactName": "4Head-Poultry-ERP-${version}-Setup.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "4Head Poultry ERP",
+      "runAfterFinish": true
+    },
+    "portable": {
+      "artifactName": "4Head-Poultry-ERP-${version}-portable.${ext}"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+* text=auto eol=lf
+# common binaries (never touch line endings)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.gz  binary
+*.mp4 binary
+*.mov binary

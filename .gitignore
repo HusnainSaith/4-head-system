@@ -1,0 +1,73 @@
+# Dependencies
+**/node_modules/
+
+# Environment files and local secrets (keep templates)
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.sample
+
+# Build and packaged application output
+**/dist/
+**/dist-ssr/
+**/coverage/
+**/.nyc_output/
+desktop/runtime/
+desktop/release/
+desktop/build/icon.ico
+
+# Local databases, backups, and credentials
+database-backups/
+*.db
+*.sqlite
+*.sqlite3
+*.dump
+*.backup
+*.pem
+*.key
+*.pfx
+*.p12
+
+# Runtime uploads and temporary data
+**/uploads/*
+!**/uploads/.gitkeep
+**/.temp/
+**/.tmp/
+*.pid
+*.pid.lock
+
+# QA/browser artifacts and generated reports
+qa-artifacts/
+**/playwright-report/
+**/playwright-results/
+**/test-results/
+**/artifacts/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Generated diagnostic output
+**/audit_output.txt
+**/phase*-test-output.txt
+**/verifier_*.txt
+
+# Local Codex/agent and disabled repository metadata
+.agents/
+.codex/
+**/.git_disabled/
+
+# Editors and operating systems
+**/.idea/
+**/.vscode/*
+!**/.vscode/settings.json
+!**/.vscode/tasks.json
+!**/.vscode/launch.json
+!**/.vscode/extensions.json
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*.suo
+

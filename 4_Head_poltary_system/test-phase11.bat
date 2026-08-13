@@ -1,0 +1,3 @@
+@echo off
+echo Running Phase 11 Notifications ^& Alerts tests...
+npm run test:e2e -- --testPathPattern=phase11-notifications.e2e-spec.ts --runInBand

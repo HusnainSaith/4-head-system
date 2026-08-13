@@ -1,0 +1,3 @@
+@echo off
+echo Running Phase 9 Integration Tests...
+npm run test:e2e -- test/integration/phase9.e2e-spec.ts
