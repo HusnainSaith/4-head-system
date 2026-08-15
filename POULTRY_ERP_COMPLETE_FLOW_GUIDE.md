@@ -2,6 +2,41 @@
 
 This guide describes the current system implemented in the backend and frontend. Part I explains every page and accounting rule. Part II is a practical, numbered test script using example amounts. It tells the tester where to enter an amount, where it must be added, where it must be subtracted, and what must remain unchanged.
 
+> **Start practical testing here:** [Part II — Complete Step-by-Step System Testing Guide](#part-ii--complete-step-by-step-system-testing-guide). Each test uses the format **Open page → Click action → Enter values → Expected additions → Expected deductions → Validation**.
+
+## Practical testing index
+
+| Feature/page | Step-by-step test |
+|---|---|
+| Starting balances | [Test preparation](#27-test-preparation-and-starting-balances) |
+| Login, password, roles, access | [Authentication and access](#28-authentication-and-access-testing) |
+| Owner and department dashboards | [Dashboard](#29-dashboard-testing) |
+| Users, Roles, and Parties setup | [Master data](#30-master-data-setup-for-transaction-tests) |
+| Brokerage Purchases | [Brokerage purchases](#31-testing-brokerage-purchases) |
+| Brokerage Sales | [Brokerage sales](#32-testing-brokerage-sales) |
+| Brokerage Stock and P&L | [Brokerage stock/report](#33-testing-brokerage-stock-and-report) |
+| Supply Purchases and Sales | [Supply purchases/sales](#34-testing-supply-purchases-and-sales) |
+| Supply → Shop transfer and settlement | [Internal transfer](#35-testing-supply-internal-transfer-and-settlement) |
+| Supply Stock and P&L | [Supply stock/reports](#36-testing-supply-stock-and-reports) |
+| Wastage Purchases, Sales, Stock, P&L | [Wastage](#37-testing-wastage-flow) |
+| Shop Incoming, Dressing, Sales, Stock, P&L | [Fresh Chicken Shop](#38-testing-fresh-chicken-shop-flow) |
+| Party receipts and payments | [Party statements](#39-testing-party-receipts-and-payments) |
+| Vehicles, Fuel, Maintenance | [Vehicles](#40-testing-vehicles-fuel-and-maintenance) |
+| Employees, Advances, Bonuses, Payroll | [Employees and payroll](#41-testing-employees-advances-bonuses-and-payroll) |
+| Expenses | [Manual expenses](#42-testing-manual-expenses) |
+| Cash, Bank, and statements | [Cash & Bank](#43-testing-cash--bank-pages) |
+| Normal Investor | [Normal investor](#44-testing-a-normal-investor) |
+| Shafique/Brother | [Shafique account](#45-testing-shafiquebrother-account) |
+| Investor profit periods | [Profit periods](#46-testing-investor-profit-period-backend-flow) |
+| Committees | [Committees](#47-testing-committees) |
+| Zakat and Funds | [Zakat & Funds](#48-testing-zakat--funds) |
+| Invoices and Notifications | [Invoices/notifications](#49-testing-invoices-and-notifications) |
+| All six Reports pages | [Reports](#50-testing-all-reports) |
+| Redirects, Back, Refresh, unknown pages | [Navigation](#51-testing-redirects-navigation-controls-refresh-and-back) |
+| All ending calculations | [Final reconciliation](#52-final-complete-reconciliation) |
+
+For the quickest answer to “where is an amount added or subtracted?”, use [Complete amount movement quick reference](#24-complete-amount-movement-quick-reference). For exact example values and rejected-transaction checks, use the linked practical test above.
+
 ## 1. The four balances must not be confused
 
 The ERP tracks different kinds of balances. The same transaction can increase one balance and decrease another.
