@@ -28,6 +28,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   useCreatePartyMutation,
   useUpdatePartyMutation,
+  useAdjustPartyBalanceMutation,
+  useGetPartyQuery,
 } from "@/features/parties/partiesApi";
 import {
   PartyType,
@@ -45,6 +47,8 @@ const externalPartyTypes = [
   PartyType.FACTORY,
   PartyType.RANDOM_USER,
   PartyType.INVESTOR,
+  PartyType.PARTNER,
+  PartyType.EMPLOYEE,
 ] as const;
 
 const optionalUuid = z.union([
@@ -63,10 +67,6 @@ const partyFormSchema = z.object({
     .array(z.string().uuid())
     .min(1, "Select at least one linked department"),
   notes: z.string(),
-  /**
-   * Positive = party owes the business (receivable/asset).
-   * Negative = business owes the party (payable/liability).
-   */
   openingBalance: z
     .string()
     .refine(
@@ -102,6 +102,8 @@ const partyTypeLabels: Record<PartyType, string> = {
   [PartyType.INTERNAL_DEPARTMENT]: "Internal department",
   [PartyType.RANDOM_USER]: "Random user",
   [PartyType.INVESTOR]: "Investor",
+  [PartyType.PARTNER]: "Partner",
+  [PartyType.EMPLOYEE]: "Employee",
 };
 
 function valuesFor(party?: Party | null): PartyFormValues {
@@ -190,6 +192,10 @@ export function PartyFormDialog({
 }: PartyFormDialogProps) {
   const [createParty, createState] = useCreatePartyMutation();
   const [updateParty, updateState] = useUpdatePartyMutation();
+  const [adjustBalance, adjustState] = useAdjustPartyBalanceMutation();
+  const { refetch: refetchParty } = useGetPartyQuery(party?.id ?? "", {
+    skip: !party?.id,
+  });
   const form = useForm<PartyFormValues>({
     resolver: zodResolver(partyFormSchema),
     defaultValues: valuesFor(party),
@@ -198,6 +204,8 @@ export function PartyFormDialog({
   const isSubmitting = createState.isLoading || updateState.isLoading;
   const partyUsers = useListPartyUsersQuery();
   const [userSearch, setUserSearch] = useState("");
+  const [balanceAdjustment, setBalanceAdjustment] = useState("");
+  const [balanceDepartmentId, setBalanceDepartmentId] = useState("");
   const normalizedUserSearch = userSearch.trim().toLowerCase();
   const visiblePartyUsers = (partyUsers.data?.data ?? []).filter((user) =>
     [user.fullName, user.email, user.role?.name]
@@ -210,6 +218,8 @@ export function PartyFormDialog({
   useEffect(() => {
     if (open) {
       form.reset(valuesFor(party));
+      setBalanceAdjustment("");
+      setBalanceDepartmentId(party?.primaryDepartmentId ?? "");
     }
   }, [form, open, party]);
 
@@ -239,9 +249,30 @@ export function PartyFormDialog({
     }
   };
 
+  const handleAdjustBalance = async () => {
+    if (!party || !balanceAdjustment || !balanceDepartmentId) {
+      toast.error("Please fill in all balance adjustment fields");
+      return;
+    }
+    try {
+      await adjustBalance({
+        id: party.id,
+        body: {
+          departmentId: balanceDepartmentId,
+          amount: Number(balanceAdjustment),
+        },
+      }).unwrap();
+      toast.success("Balance adjusted successfully");
+      setBalanceAdjustment("");
+      await refetchParty();
+    } catch (error) {
+      toast.error(getApiErrorMessage(error));
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{isEditing ? "Edit party" : "Add party"}</DialogTitle>
           <DialogDescription>
@@ -343,10 +374,14 @@ export function PartyFormDialog({
                 )}
               </FormField>
               <FormField control={form.control} name="phone" label="Phone">
-                {(field) => <Input {...field} type="tel" autoComplete="tel" />}
+                {(field) => (
+                  <Input {...field} type="tel" autoComplete="tel" />
+                )}
               </FormField>
               <FormField control={form.control} name="address" label="Address">
-                {(field) => <Input {...field} autoComplete="street-address" />}
+                {(field) => (
+                  <Input {...field} autoComplete="street-address" />
+                )}
               </FormField>
               <DepartmentField
                 control={form.control}
@@ -412,6 +447,50 @@ export function PartyFormDialog({
             <FormField control={form.control} name="notes" label="Notes">
               {(field) => <Textarea {...field} />}
             </FormField>
+
+            {isEditing && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
+                <h3 className="mb-3 font-semibold text-blue-900">
+                  Adjust Current Balance
+                </h3>
+                <p className="mb-3 text-sm text-blue-800">
+                  Current balance: <strong>{party?.currentBalance}</strong>
+                </p>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Select
+                    value={balanceDepartmentId}
+                    onValueChange={setBalanceDepartmentId}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select department" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {departmentOptions.map((option) => (
+                        <SelectItem key={option.id} value={option.id}>
+                          {option.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    placeholder="Amount (+ or -)"
+                    value={balanceAdjustment}
+                    onChange={(e) => setBalanceAdjustment(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleAdjustBalance}
+                    isLoading={adjustState.isLoading}
+                  >
+                    Adjust
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <DialogFooter>
               <Button
                 type="button"

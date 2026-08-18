@@ -89,6 +89,7 @@ function makeParty(overrides: Partial<Party> = {}): Party {
       { id: "00000000-0000-4000-8000-000000000001", name: "Supply" },
     ],
     openingBalance: "0",
+    currentBalance: "0.00",
     notes: null,
     createdAt: "2025-01-01T00:00:00.000Z",
     updatedAt: "2025-01-01T00:00:00.000Z",

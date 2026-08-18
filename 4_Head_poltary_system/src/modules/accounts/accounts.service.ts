@@ -3,6 +3,7 @@ import { DataSource } from 'typeorm';
 import { AccountsRepository } from './accounts.repository';
 import { CreateBankAccountDto } from './dto/create-bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
+import { CashAdjustmentDto, CashAdjustmentType } from './dto/cash-adjustment.dto';
 import { BankAccount } from './entities/bank-account.entity';
 import { CashAccount } from './entities/cash-account.entity';
 
@@ -125,9 +126,9 @@ export class AccountsService {
     );
   }
 
-  async getCashAccountStatement(departmentId: string, from: Date, to: Date) {
+  async getCashAccountStatement(cashAccountId: string, from: Date, to: Date) {
     this.validateRange(from, to);
-    const account = await this.accountsRepo.findCashByDepartment(departmentId);
+    const account = await this.accountsRepo.findCashById(cashAccountId);
     const prior = await this.priorBalance('cash_account_id', account.id, from);
     const rows = await this.dataSource.query(
       `SELECT le.id, le.entry_type, le.amount, le.entry_date, le.source_type,
@@ -173,6 +174,44 @@ export class AccountsService {
     updatedBy: string,
   ): Promise<void> {
     return this.accountsRepo.updateBankAccount(id, { ...dto, updatedBy });
+  }
+
+  async adjustCashDrawer(
+    cashAccountId: string,
+    dto: CashAdjustmentDto,
+    actorId: string,
+  ) {
+    const account = await this.accountsRepo.findCashById(cashAccountId);
+    const isDeposit = dto.type === CashAdjustmentType.DEPOSIT;
+    const entryDate = dto.date ? new Date(dto.date) : new Date();
+    const adjustmentId = await this.dataSource.query(
+      `SELECT gen_random_uuid() AS id`,
+    ).then((rows: { id: string }[]) => rows[0].id);
+    await this.dataSource.query(
+      `INSERT INTO ledger_entries
+        (id, department_id, account_id, cash_account_id, entry_type, amount,
+         entry_date, source_type, source_id, description, created_by)
+       VALUES ($1,
+         (SELECT id FROM departments WHERE is_active = true ORDER BY created_at LIMIT 1),
+         (SELECT id FROM chart_of_accounts WHERE code = 'cash'),
+         $2, $3, $4, $5, 'cash_adjustment', $1, $6, $7)`,
+      [
+        adjustmentId,
+        account.id,
+        isDeposit ? 'debit' : 'credit',
+        this.money(dto.amount),
+        entryDate,
+        dto.notes ?? (isDeposit ? 'Cash deposit' : 'Cash withdrawal'),
+        actorId,
+      ],
+    );
+    return this.getCashAccountById(account.id);
+  }
+
+  async getCashAccountById(cashAccountId: string) {
+    const account = await this.accountsRepo.findCashById(cashAccountId);
+    const [row] = await this.cashTotals([account.id]);
+    return this.cashBalance(account, row);
   }
 
   deactivateBankAccount(id: string, updatedBy: string): Promise<void> {

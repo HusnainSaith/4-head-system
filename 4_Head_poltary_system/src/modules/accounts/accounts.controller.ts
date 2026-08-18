@@ -14,6 +14,7 @@ import { AccountsService } from './accounts.service';
 import { AccountStatementQueryDto } from './dto/account-statement-query.dto';
 import { CreateBankAccountDto } from './dto/create-bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
+import { CashAdjustmentDto } from './dto/cash-adjustment.dto';
 
 @Controller('accounts')
 export class AccountsController {
@@ -22,16 +23,23 @@ export class AccountsController {
   @Get('summary') getSummary() {
     return this.accountsService.getFullCashBankSummary();
   }
+  @Post('cash/:id/adjust') adjustCash(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CashAdjustmentDto,
+    @Request() request: { user: { id: string } },
+  ) {
+    return this.accountsService.adjustCashDrawer(id, dto, request.user.id);
+  }
   @Get('cash') getCash() {
     return this.accountsService.getAllCashBalances();
   }
-  @Get('cash/:departmentId/balance') getCashBalance(
-    @Param('departmentId', ParseUUIDPipe) id: string,
+  @Get('cash/:id/balance') getCashBalance(
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.accountsService.getCashAccountBalance(id);
+    return this.accountsService.getCashAccountById(id);
   }
-  @Get('cash/:departmentId/statement') getCashStatement(
-    @Param('departmentId', ParseUUIDPipe) id: string,
+  @Get('cash/:id/statement') getCashStatement(
+    @Param('id', ParseUUIDPipe) id: string,
     @Query() query: AccountStatementQueryDto,
   ) {
     return this.accountsService.getCashAccountStatement(

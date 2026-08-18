@@ -11,6 +11,8 @@ export enum PartyType {
   INTERNAL_DEPARTMENT = "internal_department",
   RANDOM_USER = "random_user",
   INVESTOR = "investor",
+  PARTNER = "partner",
+  EMPLOYEE = "employee",
 }
 
 export interface PartyDepartment {
@@ -32,6 +34,7 @@ export interface Party {
   primaryDepartment?: PartyDepartment | null;
   departments: PartyDepartment[];
   openingBalance: string;
+  currentBalance: string;
   notes: string | null;
   createdAt: string;
   updatedAt: string;
@@ -59,6 +62,13 @@ export interface CreatePartyRequest {
 export type UpdatePartyRequest = Partial<
   Omit<CreatePartyRequest, "openingBalance">
 >;
+
+export interface AdjustPartyBalanceRequest {
+  departmentId: string;
+  amount: number;
+  notes?: string;
+  date?: string;
+}
 
 export type LedgerEntryType = "debit" | "credit";
 export type LedgerSourceType =

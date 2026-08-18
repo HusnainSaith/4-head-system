@@ -54,6 +54,7 @@ function makeParty(overrides: Partial<Party> = {}): Party {
     primaryDepartmentId: null,
     departments: [],
     openingBalance: "0",
+    currentBalance: "0.00",
     notes: null,
     createdAt: "2025-01-01T00:00:00.000Z",
     updatedAt: "2025-01-01T00:00:00.000Z",

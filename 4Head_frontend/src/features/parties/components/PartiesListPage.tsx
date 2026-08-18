@@ -44,6 +44,8 @@ const partyTypeLabels: Record<PartyType, string> = {
   [PartyType.INTERNAL_DEPARTMENT]: "Internal department",
   [PartyType.RANDOM_USER]: "Random user",
   [PartyType.INVESTOR]: "Investor",
+  [PartyType.PARTNER]: "Partner",
+  [PartyType.EMPLOYEE]: "Employee",
 };
 
 const partyTypeVariants: Record<
@@ -58,6 +60,8 @@ const partyTypeVariants: Record<
   [PartyType.INTERNAL_DEPARTMENT]: "destructive",
   [PartyType.RANDOM_USER]: "secondary",
   [PartyType.INVESTOR]: "success",
+  [PartyType.PARTNER]: "warning",
+  [PartyType.EMPLOYEE]: "outline",
 };
 
 export function PartiesListPage() {
@@ -136,7 +140,18 @@ export function PartiesListPage() {
       {
         id: "balance",
         header: "Current balance",
-        cell: () => <Badge variant="outline">Not provided</Badge>,
+        cell: (party) => {
+          const balance = Number(party.currentBalance ?? 0);
+          if (balance === 0) return <Badge variant="outline">Zero / Nil</Badge>;
+          const formatted = new Intl.NumberFormat("en-PK").format(
+            Math.abs(balance),
+          );
+          return (
+            <span className={balance > 0 ? "text-green-600" : "text-red-600"}>
+              {balance > 0 ? "+" : "-"} {formatted}
+            </span>
+          );
+        },
         align: "right",
       },
       {

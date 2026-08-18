@@ -1,7 +1,9 @@
 export type BankMethod = "cheque" | "app";
+export type CashAdjustmentType = "deposit" | "withdraw";
+export interface CashAdjustmentRequest { type: CashAdjustmentType; amount: number; notes?: string; date?: string; }
 export interface PaymentAccountSelection { cashAccountId?: string; bankAccountId?: string; bankTransactionMethod?: BankMethod; chequeNumber?: string; appReference?: string; }
 
-export interface CashAccount { id: string; departmentId: string; accountName: string; openingBalance: string; department?: { name: string }; }
+export interface CashAccount { id: string; departmentId?: string; accountName: string; openingBalance: string; isShared?: boolean; department?: { name: string }; }
 export interface BankAccount { id: string; bankName: string; accountTitle: string; accountNumber?: string; branchName?: string; openingBalance: string; }
 export interface CashBalance { account: CashAccount; openingBalance: string; totalIn: string; totalOut: string; currentBalance: string; }
 export interface BankBalance { account: BankAccount; openingBalance: string; totalIn: string; totalOut: string; currentBalance: string; chequeIn: string; chequeOut: string; appIn: string; appOut: string; }

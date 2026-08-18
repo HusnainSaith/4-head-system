@@ -12,6 +12,7 @@ import type {
   RecordPaymentResponse,
   DepartmentBalances,
   UpdatePartyRequest,
+  AdjustPartyBalanceRequest,
 } from "@/features/parties/types";
 
 export const partiesApi = apiSlice.injectEndpoints({
@@ -44,6 +45,20 @@ export const partiesApi = apiSlice.injectEndpoints({
       query: ({ id, body }) => ({
         url: `/parties/${id}`,
         method: "PATCH",
+        body,
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: "Party", id },
+        { type: "Party", id: "LIST" },
+      ],
+    }),
+    adjustPartyBalance: builder.mutation<
+      ApiResponse<{ partyId: string; departmentId: string; balance: string }>,
+      { id: string; body: AdjustPartyBalanceRequest }
+    >({
+      query: ({ id, body }) => ({
+        url: `/parties/${id}/adjust-balance`,
+        method: "POST",
         body,
       }),
       invalidatesTags: (_result, _error, { id }) => [
@@ -118,6 +133,7 @@ export const {
   useGetPartyQuery,
   useCreatePartyMutation,
   useUpdatePartyMutation,
+  useAdjustPartyBalanceMutation,
   useDeletePartyMutation,
   useGetPartyStatementQuery,
   useRecordPartyPaymentMutation,

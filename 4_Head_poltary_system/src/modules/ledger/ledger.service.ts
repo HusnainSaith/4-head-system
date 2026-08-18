@@ -85,6 +85,13 @@ export class LedgerService {
     };
   }
 
+  async getPartyBalances(
+    partyIds: string[],
+  ): Promise<Map<string, string>> {
+    const rows = await this.ledgerRepo.getPartyBalances(partyIds);
+    return new Map(rows.map((r) => [r.partyId, Number(r.balance).toFixed(2)]));
+  }
+
   async getDepartmentPartyBalances(departmentId: string) {
     const parties =
       await this.ledgerRepo.getDepartmentPartyBalances(departmentId);
@@ -209,6 +216,8 @@ export class LedgerService {
       'investor_capital',
       'investor_profit',
       'zakat_fund',
+      'cash_adjustment',
+      'party_adjustment',
     ];
     const matched = values.find((candidate) => candidate === value);
     if (!matched) throw new Error(`Invalid ledger source type: ${value}`);

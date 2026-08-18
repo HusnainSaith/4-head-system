@@ -20,6 +20,13 @@ export class AccountsRepository {
     });
   }
 
+  findCashById(id: string): Promise<CashAccount> {
+    return this.cashRepo.findOneOrFail({
+      where: { id, isActive: true },
+      relations: { department: true },
+    });
+  }
+
   findAllCashAccounts(): Promise<CashAccount[]> {
     return this.cashRepo.find({
       where: { isActive: true },

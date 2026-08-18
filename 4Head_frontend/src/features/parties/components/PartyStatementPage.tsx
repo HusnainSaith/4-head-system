@@ -64,6 +64,8 @@ const partyTypeLabels: Record<PartyType, string> = {
   [PartyType.INTERNAL_DEPARTMENT]: "Internal department",
   [PartyType.RANDOM_USER]: "Random user",
   [PartyType.INVESTOR]: "Investor",
+  [PartyType.PARTNER]: "Partner",
+  [PartyType.EMPLOYEE]: "Employee",
 };
 
 const money = new Intl.NumberFormat("en-PK", {

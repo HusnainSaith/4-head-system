@@ -88,6 +88,22 @@ export class LedgerRepository {
     });
   }
 
+  getPartyBalances(partyIds: string[]) {
+    if (partyIds.length === 0) return Promise.resolve([]);
+    return this.ledgerRepo.query(
+      `
+      SELECT p.id as "partyId", COALESCE(SUM(
+        CASE WHEN le.entry_type = 'debit' THEN CAST(le.amount AS numeric) 
+             ELSE -CAST(le.amount AS numeric) END
+      ), 0) as balance
+      FROM (SELECT UNNEST($1::uuid[]) as id) p
+      LEFT JOIN ledger_entries le ON p.id = le.party_id
+      GROUP BY p.id
+      `,
+      [partyIds],
+    );
+  }
+
   getDepartmentPartyBalances(departmentId: string) {
     return this.ledgerRepo
       .createQueryBuilder('le')

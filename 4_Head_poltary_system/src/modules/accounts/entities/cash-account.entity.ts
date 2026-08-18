@@ -13,12 +13,12 @@ export class CashAccount extends AuditBaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'department_id', type: 'uuid', unique: true })
-  departmentId: string;
+  @Column({ name: 'department_id', type: 'uuid', nullable: true })
+  departmentId?: string;
 
-  @ManyToOne(() => Department, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Department, { nullable: true, onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'department_id' })
-  department: Department;
+  department?: Department;
 
   @Column({ name: 'account_name' })
   accountName: string;
@@ -34,4 +34,7 @@ export class CashAccount extends AuditBaseEntity {
 
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
+
+  @Column({ name: 'is_shared', default: false })
+  isShared: boolean;
 }

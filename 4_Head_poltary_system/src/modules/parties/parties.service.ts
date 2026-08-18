@@ -9,6 +9,7 @@ import { DataSource, EntityManager, In } from 'typeorm';
 import { PartiesRepository } from './parties.repository';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
+import { AdjustPartyBalanceDto } from './dto/adjust-party-balance.dto';
 import { PartyStatementQueryDto } from './dto/party-statement-query.dto';
 import { ListPartiesQueryDto } from './dto/list-parties-query.dto';
 import { LedgerService } from '../ledger/ledger.service';
@@ -136,10 +137,19 @@ export class PartiesService {
       limit,
       search,
     });
+    const partyIds = result.items.map((p) => p.id);
+    const balanceMap = await this.ledgerService.getPartyBalances(partyIds);
+    const items = result.items.map((p) => {
+      const plainParty = JSON.parse(JSON.stringify(p));
+      return {
+        ...plainParty,
+        currentBalance: balanceMap.get(p.id) ?? '0.00',
+      };
+    });
     return {
       success: true,
       message: 'Parties retrieved successfully',
-      data: result,
+      data: { ...result, items },
     };
   }
 
@@ -279,6 +289,44 @@ export class PartiesService {
       success: true,
       message: 'Party deleted successfully',
       data: null,
+    };
+  }
+
+  async adjustBalance(id: string, dto: AdjustPartyBalanceDto, actorId: string) {
+    const partyResponse = await this.findById(id);
+    const party = partyResponse.data;
+    const entryDate = dto.date ? new Date(dto.date) : new Date();
+    const adjustmentId = await this.dataSource.query(
+      `SELECT gen_random_uuid() AS id`,
+    ).then((rows: { id: string }[]) => rows[0].id);
+    const isIncrease = dto.amount > 0;
+    await this.dataSource.query(
+      `INSERT INTO ledger_entries
+        (id, department_id, account_id, party_id, entry_type, amount,
+         entry_date, source_type, source_id, description, created_by)
+       VALUES ($1, $2,
+         (SELECT id FROM chart_of_accounts WHERE code = $3),
+         $4, $5, $6, $7, 'party_adjustment', $1, $8, $9)`,
+      [
+        adjustmentId,
+        dto.departmentId,
+        isIncrease ? 'accounts_receivable' : 'accounts_payable',
+        id,
+        isIncrease ? 'debit' : 'credit',
+        Math.abs(dto.amount).toFixed(2),
+        entryDate,
+        dto.notes ?? (isIncrease ? 'Balance increase' : 'Balance decrease'),
+        actorId,
+      ],
+    );
+    const balance = await this.ledgerService.getPartyDepartmentBalance(
+      id,
+      dto.departmentId,
+    );
+    return {
+      success: true,
+      message: 'Party balance adjusted successfully',
+      data: { partyId: id, departmentId: dto.departmentId, balance },
     };
   }
 

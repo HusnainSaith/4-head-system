@@ -205,12 +205,12 @@ export function BankStatementPage() {
 }
 
 export function CashStatementPage() {
-  const { departmentId = "" } = useParams();
+  const { id = "" } = useParams();
   const [from, setFrom] = useState(yearStart);
   const [to, setTo] = useState(today);
   const q = useGetCashStatementQuery(
-    { departmentId, from, to },
-    { skip: !departmentId },
+    { id, from, to },
+    { skip: !id },
   );
   if (q.isLoading) return <PageSkeleton rows={6} />;
   if (q.isError || !q.data?.data)

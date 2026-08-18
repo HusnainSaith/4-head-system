@@ -392,7 +392,7 @@ export function AppRoutes() {
             }
           />
           <Route
-            path="accounts/cash/:departmentId/statement"
+            path="accounts/cash/:id/statement"
             element={
               <RoleGuard allowedRoles={managementRoles}>
                 <CashStatementPage />

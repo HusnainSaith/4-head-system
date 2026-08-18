@@ -71,6 +71,8 @@ export class LedgerEntry {
       'investor_capital',
       'investor_profit',
       'zakat_fund',
+      'cash_adjustment',
+      'party_adjustment',
     ],
     name: 'source_type',
   })
@@ -91,7 +93,9 @@ export class LedgerEntry {
     | 'brother_adjustment'
     | 'investor_capital'
     | 'investor_profit'
-    | 'zakat_fund';
+    | 'zakat_fund'
+    | 'cash_adjustment'
+    | 'party_adjustment';
 
   @Column({ name: 'source_id', type: 'uuid' })
   sourceId: string;

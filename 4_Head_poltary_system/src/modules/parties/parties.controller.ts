@@ -18,6 +18,7 @@ import { BaseController } from '../../common/controllers/base.controller';
 import { PartiesService } from './parties.service';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
+import { AdjustPartyBalanceDto } from './dto/adjust-party-balance.dto';
 import { PartyStatementQueryDto } from './dto/party-statement-query.dto';
 import { ListPartiesQueryDto } from './dto/list-parties-query.dto';
 import { RecordPartyPaymentDto } from './dto/record-party-payment.dto';
@@ -96,6 +97,19 @@ export class PartiesController extends BaseController {
     }
     return this.handleAsyncOperation(
       this.partiesService.recordPayment(id, dto, user.id),
+    );
+  }
+
+  @Post(':id/adjust-balance')
+  @ApiOperation({ summary: 'Adjust party balance (admin only)' })
+  adjustBalance(
+    @Param('id') id: string,
+    @Body() dto: AdjustPartyBalanceDto,
+    @Req() req: Request,
+  ) {
+    const user = (req as any).user;
+    return this.handleAsyncOperation(
+      this.partiesService.adjustBalance(id, dto, user.id),
     );
   }
 }
