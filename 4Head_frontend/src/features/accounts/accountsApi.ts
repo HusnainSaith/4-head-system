@@ -1,6 +1,6 @@
 import { apiSlice } from "@/store/apiSlice";
 import type { ApiResponse } from "@/types/api";
-import type { AccountStatement, AccountsSummary, BankAccount, BankBalance, BankMethod, CashAccount, CashAdjustmentRequest, CashBalance, CreateBankAccount } from "./types";
+import type { AccountStatement, AccountsSummary, BankAccount, BankAdjustmentRequest, BankBalance, BankMethod, CashAccount, CashAdjustmentRequest, CashBalance, CreateBankAccount } from "./types";
 
 export const accountsApi = apiSlice.injectEndpoints({
   endpoints: (build) => ({
@@ -11,6 +11,7 @@ export const accountsApi = apiSlice.injectEndpoints({
     getBankStatement: build.query<ApiResponse<AccountStatement<BankAccount>>, { id: string; from: string; to: string; method?: BankMethod }>({ query: ({ id, ...params }) => ({ url: `/accounts/bank/${id}/statement`, params }) }),
     getCashStatement: build.query<ApiResponse<AccountStatement<CashAccount>>, { id: string; from: string; to: string }>({ query: ({ id, ...params }) => ({ url: `/accounts/cash/${id}/statement`, params }) }),
     adjustCashDrawer: build.mutation<ApiResponse<CashBalance>, { id: string; body: CashAdjustmentRequest }>({ query: ({ id, body }) => ({ url: `/accounts/cash/${id}/adjust`, method: "POST", body }), invalidatesTags: [{ type: "Account", id: "SUMMARY" }, { type: "Account", id: "CASH" }] }),
+    adjustBankAccount: build.mutation<ApiResponse<BankBalance>, { id: string; body: BankAdjustmentRequest }>({ query: ({ id, body }) => ({ url: `/accounts/bank/${id}/adjust`, method: "POST", body }), invalidatesTags: [{ type: "Account", id: "SUMMARY" }, { type: "Account", id: "BANK" }, { type: "Account", id: "CASH" }] }),
   }),
 });
-export const { useGetAccountsSummaryQuery, useGetCashAccountsQuery, useGetBankAccountsQuery, useCreateBankAccountMutation, useGetBankStatementQuery, useGetCashStatementQuery, useAdjustCashDrawerMutation } = accountsApi;
+export const { useGetAccountsSummaryQuery, useGetCashAccountsQuery, useGetBankAccountsQuery, useCreateBankAccountMutation, useGetBankStatementQuery, useGetCashStatementQuery, useAdjustCashDrawerMutation, useAdjustBankAccountMutation } = accountsApi;

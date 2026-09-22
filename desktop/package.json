@@ -1,6 +1,6 @@
 {
   "name": "4head-desktop",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "private": true,
   "description": "Self-contained Windows desktop edition of 4Head Poultry ERP",
   "main": "main.cjs",

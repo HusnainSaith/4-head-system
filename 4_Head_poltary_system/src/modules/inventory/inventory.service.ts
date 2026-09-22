@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { EntityManager } from 'typeorm';
 import { InventoryRepository } from './inventory.repository';
 import { ExpensesService } from '../expenses/expenses.service';
@@ -396,6 +396,7 @@ export class InventoryService {
       {
         departmentId: dto.departmentId,
         quantityKg: dto.quantityKg.toFixed(3),
+        ratePerKg: dto.ratePerKg.toFixed(2),
         reason: dto.reason,
         note: dto.note,
         writeoffDate: new Date(dto.writeoffDate),
@@ -406,7 +407,7 @@ export class InventoryService {
       manager,
     );
 
-    const { currentWac } = await this.applyStockOut(
+    await this.applyStockOut(
       dto.departmentId,
       dto.quantityKg,
       'writeoff_out',
@@ -417,7 +418,7 @@ export class InventoryService {
       stockType,
     );
 
-    const valuationAmount = dto.quantityKg * currentWac;
+    const valuationAmount = dto.quantityKg * dto.ratePerKg;
     await this.expensesService.createSystemExpense(
       {
         departmentId: dto.departmentId,
@@ -442,6 +443,77 @@ export class InventoryService {
     stockType: StockType = StockType.STANDARD,
   ) {
     return this.inventoryRepo.getBalance(departmentId, undefined, stockType);
+  }
+
+  listWriteoffs(departmentId: string) {
+    return this.inventoryRepo.findWriteoffs(departmentId);
+  }
+
+  async getWriteoff(id: string, departmentId: string) {
+    const item = await this.inventoryRepo.findWriteoff(id, departmentId);
+    if (!item) throw new NotFoundException('Shrinkage record not found');
+    return item;
+  }
+
+  sumWriteoffQuantity(departmentId: string, from?: string, to?: string) {
+    return this.inventoryRepo.sumWriteoffQuantity(departmentId, from, to);
+  }
+
+  sumMovementQuantity(departmentId: string, movementTypes: string[], from: Date, to: Date) {
+    return this.inventoryRepo.sumMovementQuantity(departmentId, movementTypes, from, to);
+  }
+
+  async deleteWriteoff(
+    id: string,
+    departmentId: string,
+    actorId: string,
+    manager: EntityManager,
+  ) {
+    const item = await this.inventoryRepo.findWriteoff(id, departmentId, manager);
+    if (!item) throw new NotFoundException('Shrinkage record not found');
+    await this.applyPurchaseIn(
+      departmentId,
+      Number(item.quantityKg),
+      Number(item.valuationAmount) / Number(item.quantityKg),
+      StockMovementSourceEnum.STOCK_WRITEOFF,
+      item.id,
+      new Date(),
+      manager,
+      item.stockType,
+    );
+    await this.expensesService.reverseSystemExpenses(
+      'stock_writeoff',
+      item.id,
+      actorId,
+      manager,
+    );
+    await this.inventoryRepo.softDeleteWriteoff(item.id, actorId, manager);
+    return item;
+  }
+
+  async updateWriteoff(
+    id: string,
+    departmentId: string,
+    dto: any,
+    actorId: string,
+    manager: EntityManager,
+  ) {
+    const old = await this.deleteWriteoff(id, departmentId, actorId, manager);
+    return this.createWriteoff(
+      {
+        departmentId,
+        quantityKg: dto.quantityKg ?? Number(old.quantityKg),
+        ratePerKg:
+          dto.ratePerKg ??
+          Number(old.ratePerKg ?? Number(old.valuationAmount) / Number(old.quantityKg)),
+        reason: dto.reason ?? old.reason,
+        note: dto.note ?? old.note,
+        writeoffDate: dto.writeoffDate ?? String(old.writeoffDate),
+        stockType: dto.stockType ?? old.stockType,
+      },
+      actorId,
+      manager,
+    );
   }
 
   async reverseSourceMovement(

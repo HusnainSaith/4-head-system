@@ -14,6 +14,7 @@ import { InvoicesService } from '../invoices/invoices.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { publishBusinessDocument } from '../invoices/business-document.helper';
 import { paymentAccountLink } from '../accounts/dto/payment-account-selection.dto';
+import { UpdateExpenseDto } from './dto/update-expense.dto';
 
 @Injectable()
 export class ExpensesService {
@@ -141,10 +142,52 @@ export class ExpensesService {
     return { success: true, data };
   }
 
+  sumTotal(departmentId: string, from?: string, to?: string) {
+    return this.expensesRepository.sumTotal(departmentId, from, to);
+  }
+
   async findOne(id: string) {
     const e = await this.expensesRepository.findOne(id);
     if (!e) throw new NotFoundException('Expense not found');
     return { success: true, data: e };
+  }
+
+  async update(id: string, dto: UpdateExpenseDto, updatedBy?: string) {
+    const expense = await this.expensesRepository.findOne(id);
+    if (!expense) throw new NotFoundException('Expense not found');
+    if (expense.sourceType !== 'manual')
+      throw new BadRequestException('Only manual expenses can be edited');
+
+    const entryDate = new Date(dto.expenseDate ?? expense.expenseDate);
+    const oldEntries = await this.ledgerService.findBySource('expense', id);
+    if (oldEntries.length)
+      await this.ledgerService.post(
+        oldEntries.map((entry) => ({
+          departmentId: entry.departmentId,
+          accountCode: entry.account.code,
+          entryType: entry.entryType === 'debit' ? 'credit' : 'debit',
+          amount: entry.amount,
+          entryDate,
+          sourceType: 'expense' as const,
+          sourceId: id,
+          description: `Expense edit reversal ${id}`,
+          createdBy: updatedBy,
+          cashAccountId: entry.cashAccountId,
+          bankAccountId: entry.bankAccountId,
+        })),
+      );
+
+    Object.assign(expense, dto, {
+      expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : expense.expenseDate,
+      updatedBy,
+    });
+    const saved = await this.expensesRepository.saveExpense(expense);
+    const accountLink = paymentAccountLink(saved);
+    await this.ledgerService.post([
+      { departmentId: saved.departmentId, accountCode: 'operating_expense', entryType: 'debit', amount: saved.amount, entryDate, sourceType: 'expense', sourceId: saved.id, description: saved.description, createdBy: updatedBy },
+      { departmentId: saved.departmentId, accountCode: saved.paymentMethod, entryType: 'credit', amount: saved.amount, entryDate, sourceType: 'expense', sourceId: saved.id, description: saved.description, createdBy: updatedBy, ...accountLink },
+    ]);
+    return { success: true, message: 'Expense updated', data: saved };
   }
 
   async createSystemExpense(
@@ -204,5 +247,28 @@ export class ExpensesService {
     );
 
     return saved;
+  }
+
+  async reverseSystemExpenses(
+    sourceType: string,
+    sourceId: string,
+    actorId: string,
+    manager: any,
+  ): Promise<void> {
+    const expenses = await manager.find(Expense, {
+      where: { sourceType, sourceId, deletedAt: null } as any,
+    });
+    for (const expense of expenses) {
+      await this.ledgerService.reverseSource(
+        'expense',
+        expense.id,
+        actorId,
+        manager,
+      );
+      await manager.update(Expense, expense.id, {
+        deletedAt: new Date(),
+        updatedBy: actorId,
+      });
+    }
   }
 }

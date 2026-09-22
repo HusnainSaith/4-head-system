@@ -11,6 +11,7 @@ import {
   Min,
 } from 'class-validator';
 import { PaymentAccountSelectionDto } from '../../accounts/dto/payment-account-selection.dto';
+import { PartialType } from '@nestjs/mapped-types';
 
 export enum PartyPaymentDirection {
   RECEIVED = 'received',
@@ -52,3 +53,5 @@ export class RecordPartyPaymentDto extends PaymentAccountSelectionDto {
   @MaxLength(255)
   notes?: string;
 }
+
+export class UpdatePartyPaymentDto extends PartialType(RecordPartyPaymentDto) {}

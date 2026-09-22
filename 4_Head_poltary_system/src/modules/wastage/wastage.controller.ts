@@ -93,6 +93,14 @@ export class WastageController {
   createStockWriteoff(@Body() dto: StockWriteoffDto, @Req() req: Request) {
     return this.wastageService.createStockWriteoff(dto, (req as any).user.id);
   }
+  @Get('stock/writeoffs')
+  listStockWriteoffs() { return this.wastageService.listStockWriteoffs(); }
+  @Get('stock/writeoffs/:id')
+  getStockWriteoff(@Param('id') id: string) { return this.wastageService.getStockWriteoff(id); }
+  @Patch('stock/writeoffs/:id')
+  updateStockWriteoff(@Param('id') id: string, @Body() dto: Partial<StockWriteoffDto>, @Req() req: Request) { return this.wastageService.updateStockWriteoff(id, dto, (req as any).user.id); }
+  @Delete('stock/writeoffs/:id')
+  deleteStockWriteoff(@Param('id') id: string, @Req() req: Request) { return this.wastageService.deleteStockWriteoff(id, (req as any).user.id); }
 
   @Get('reports/profit-loss')
   @ApiQuery({ name: 'from', required: false })

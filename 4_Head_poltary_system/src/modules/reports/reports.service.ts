@@ -9,9 +9,17 @@ export class ReportsService {
     return date ? new Date(date) : (fallback ?? new Date('1970-01-01'));
   }
 
+  /** Convert an inclusive calendar end date to an exclusive next-day bound. */
+  private normalizeEndDate(date?: string): Date {
+    if (!date) return new Date();
+    const endExclusive = new Date(date);
+    endExclusive.setUTCDate(endExclusive.getUTCDate() + 1);
+    return endExclusive;
+  }
+
   async getConsolidatedProfitLoss(from?: string, to?: string) {
     const start = this.normalizeDate(from, new Date('1970-01-01'));
-    const end = this.normalizeDate(to, new Date());
+    const end = this.normalizeEndDate(to);
 
     const externalRevenue = await this.reportsRepo.sumExternalSales(start, end);
     const internalRev = await this.reportsRepo.sumInternalTransferRevenue(
@@ -85,7 +93,7 @@ export class ReportsService {
   async getDepartmentProfitLoss(from?: string, to?: string) {
     return this.reportsRepo.getDepartmentProfitLoss(
       this.normalizeDate(from, new Date('1970-01-01')),
-      this.normalizeDate(to, new Date()),
+      this.normalizeEndDate(to),
     );
   }
 
@@ -97,7 +105,7 @@ export class ReportsService {
     return this.reportsRepo.getStockSummary(
       departmentId,
       this.normalizeDate(from, new Date('1970-01-01')),
-      this.normalizeDate(to, new Date()),
+      this.normalizeEndDate(to),
     );
   }
 
@@ -108,7 +116,7 @@ export class ReportsService {
     categoryId?: string,
   ) {
     const start = this.normalizeDate(from, new Date('1970-01-01'));
-    const end = this.normalizeDate(to, new Date());
+    const end = this.normalizeEndDate(to);
     return this.reportsRepo.getExpenseBreakdown(
       start,
       end,
@@ -119,7 +127,7 @@ export class ReportsService {
 
   async getPayrollSummary(from?: string, to?: string, departmentId?: string) {
     const start = this.normalizeDate(from, new Date('1970-01-01'));
-    const end = this.normalizeDate(to, new Date());
+    const end = this.normalizeEndDate(to);
     return this.reportsRepo.getPayrollSummary(start, end, departmentId);
   }
 }

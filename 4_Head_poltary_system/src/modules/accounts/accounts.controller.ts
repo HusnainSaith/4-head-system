@@ -15,6 +15,7 @@ import { AccountStatementQueryDto } from './dto/account-statement-query.dto';
 import { CreateBankAccountDto } from './dto/create-bank-account.dto';
 import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 import { CashAdjustmentDto } from './dto/cash-adjustment.dto';
+import { BankAdjustmentDto } from './dto/bank-adjustment.dto';
 
 @Controller('accounts')
 export class AccountsController {
@@ -56,6 +57,13 @@ export class AccountsController {
     @Request() request: { user: { id: string } },
   ) {
     return this.accountsService.createBankAccount(dto, request.user.id);
+  }
+  @Post('bank/:id/adjust') adjustBank(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: BankAdjustmentDto,
+    @Request() request: { user: { id: string } },
+  ) {
+    return this.accountsService.adjustBankAccount(id, dto, request.user.id);
   }
   @Get('bank/:id/balance') getBankBalance(
     @Param('id', ParseUUIDPipe) id: string,

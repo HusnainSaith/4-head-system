@@ -147,8 +147,8 @@ export function PartiesListPage() {
             Math.abs(balance),
           );
           return (
-            <span className={balance > 0 ? "text-green-600" : "text-red-600"}>
-              {balance > 0 ? "+" : "-"} {formatted}
+            <span className={balance < 0 ? "text-red-600" : "text-foreground"}>
+              {balance < 0 ? "-" : "+"} {formatted}
             </span>
           );
         },

@@ -25,7 +25,7 @@ const columns: DataTableColumn<InternalTransfer>[] = [
   },
   {
     id: "qty",
-    header: "Quantity (kg)",
+    header: "Weight (kg)",
     cell: (r) => `${r.quantityKg} kg`,
     align: "right",
   },

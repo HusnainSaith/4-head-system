@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
@@ -39,6 +39,7 @@ import {
   useCreateExpenseMutation,
   useListExpenseCategoriesQuery,
   useListExpensesQuery,
+  useUpdateExpenseMutation,
   useUpdateExpenseCategoryMutation,
 } from "../expensesApi";
 import type { CreateExpenseRequest, Expense, ExpenseCategory } from "../types";
@@ -52,6 +53,7 @@ export function ExpensesPage() {
   const management = role === Role.OWNER || role === Role.ACCOUNTANT;
   const [department, setDepartment] = useState("");
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Expense | null>(null);
   const effectiveDepartment = management ? department : (own ?? "");
   const query = useListExpensesQuery(
     { departmentId: effectiveDepartment || undefined },
@@ -60,6 +62,7 @@ export function ExpensesPage() {
   const categories = useListExpenseCategoriesQuery();
   const departments = useListDepartmentsQuery(undefined, { skip: !management });
   const [create, state] = useCreateExpenseMutation();
+  const [updateExpense, updateState] = useUpdateExpenseMutation();
   const [updateCategory] = useUpdateExpenseCategoryMutation();
   const columns: DataTableColumn<Expense>[] = [
     {
@@ -101,7 +104,10 @@ export function ExpensesPage() {
           id: "actions",
           header: "Actions",
           cell: (expense: Expense) => (
-            <InvoiceButton sourceType="expense" sourceId={expense.id} label="Print" />
+            <div className="flex gap-2">
+              <InvoiceButton sourceType="expense" sourceId={expense.id} label="Print" />
+              {expense.sourceType === "manual" ? <Button variant="outline" onClick={() => { setEditing(expense); setOpen(true); }}>Edit</Button> : null}
+            </div>
           ),
         }]
       : []),
@@ -179,16 +185,19 @@ export function ExpensesPage() {
       ) : null}
       <ExpenseDialog
         open={open}
+        expense={editing}
         fixedDepartmentId={management ? undefined : (own ?? undefined)}
         departments={departments.data?.data ?? []}
         categories={(categories.data?.data ?? []).filter((c) => c.isActive)}
-        loading={state.isLoading}
-        onClose={() => setOpen(false)}
+        loading={state.isLoading || updateState.isLoading}
+        onClose={() => { setOpen(false); setEditing(null); }}
         onSubmit={async (body) => {
           try {
-            await create(body).unwrap();
-            toast.success("Manual expense created");
+            if (editing) await updateExpense({ id: editing.id, body }).unwrap();
+            else await create(body).unwrap();
+            toast.success(editing ? "Expense updated" : "Manual expense created");
             setOpen(false);
+            setEditing(null);
           } catch (error) {
             toast.error(getApiErrorMessage(error));
           }
@@ -226,6 +235,7 @@ function CategoryRow({
 }
 function ExpenseDialog({
   open,
+  expense,
   fixedDepartmentId,
   departments,
   categories,
@@ -234,6 +244,7 @@ function ExpenseDialog({
   onSubmit,
 }: {
   open: boolean;
+  expense: Expense | null;
   fixedDepartmentId?: string;
   departments: Array<{ id: string; name: string }>;
   categories: ExpenseCategory[];
@@ -248,6 +259,22 @@ function ExpenseDialog({
   const [description, setDescription] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">("cash");
   const [accountSelection, setAccountSelection] = useState<PaymentAccountSelection>({});
+  useEffect(() => {
+    if (!open) return;
+    setDepartment(expense?.departmentId ?? fixedDepartmentId ?? "");
+    setCategory(expense?.categoryId ?? "");
+    setAmount(expense?.amount ?? "");
+    setDate(expense?.expenseDate.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
+    setDescription(expense?.description ?? "");
+    setPaymentMethod(expense?.paymentMethod ?? "cash");
+    setAccountSelection(expense ? {
+      cashAccountId: expense.cashAccountId,
+      bankAccountId: expense.bankAccountId,
+      bankTransactionMethod: expense.bankTransactionMethod,
+      chequeNumber: expense.chequeNumber,
+      appReference: expense.appReference,
+    } : {});
+  }, [expense, fixedDepartmentId, open]);
   return (
     <Dialog
       open={open}
@@ -257,7 +284,7 @@ function ExpenseDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Manual Expense</DialogTitle>
+          <DialogTitle>{expense ? "Edit Manual Expense" : "Add Manual Expense"}</DialogTitle>
         </DialogHeader>
         <form
           className="space-y-3"

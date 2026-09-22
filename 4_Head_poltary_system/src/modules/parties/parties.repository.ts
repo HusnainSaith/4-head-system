@@ -30,17 +30,20 @@ export class PartiesRepository implements IPartiesRepository {
       .leftJoinAndSelect('party.user', 'user')
       .leftJoinAndSelect('party.departments', 'departments')
       .leftJoinAndSelect('party.primaryDepartment', 'primaryDepartment')
-      .leftJoinAndSelect('party.linkedDepartment', 'linkedDepartment')
-      .distinct(true);
+      .leftJoinAndSelect('party.linkedDepartment', 'linkedDepartment');
 
     if (filters?.type) {
       query.andWhere('party.partyType = :type', { type: filters.type });
     }
 
     if (filters?.departmentId) {
-      query.leftJoin('party.departments', 'departmentFilter');
       query.andWhere(
-        '(departmentFilter.id = :departmentId OR party.primaryDepartmentId = :departmentId OR party.linkedDepartmentId = :departmentId)',
+        `(party.primaryDepartmentId = :departmentId
+          OR party.linkedDepartmentId = :departmentId
+          OR EXISTS (
+            SELECT 1 FROM party_departments pd
+            WHERE pd.party_id = party.id AND pd.department_id = :departmentId
+          ))`,
         { departmentId: filters.departmentId },
       );
     }

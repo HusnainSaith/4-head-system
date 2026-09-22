@@ -1,14 +1,16 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
   ArrowLeft,
+  Pencil,
   Printer,
   ReceiptText,
+  Trash2,
   TrendingDown,
   TrendingUp,
 } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { toast } from "sonner";
 import { z } from "zod";
 import { FormField } from "@/components/common/FormField";
@@ -46,8 +48,15 @@ import {
 import {
   useGetPartyQuery,
   useGetPartyStatementQuery,
+  useDeletePartyMutation,
   useRecordPartyPaymentMutation,
+  useUpdatePartyPaymentMutation,
 } from "@/features/parties/partiesApi";
+import {
+  useUpdateSupplyPurchaseMutation,
+  useUpdateSupplySaleMutation,
+} from "@/features/supply/supplyApi";
+import { PartyFormDialog } from "@/features/parties/components/PartyFormDialog";
 import { PartyType, type PartyStatementEntry } from "@/features/parties/types";
 import { getApiErrorMessage } from "@/lib/api-error";
 
@@ -74,22 +83,64 @@ const money = new Intl.NumberFormat("en-PK", {
   minimumFractionDigits: 2,
 });
 
+function printStatement(startDate: string, endDate: string) {
+  const statement = document.querySelector<HTMLElement>(".statement-print");
+  const printWindow = window.open("", "_blank");
+
+  if (!statement || !printWindow) {
+    window.print();
+    return;
+  }
+
+  const styles = Array.from(
+    document.querySelectorAll<HTMLStyleElement | HTMLLinkElement>(
+      'style, link[rel="stylesheet"]',
+    ),
+  )
+    .map((style) => style.outerHTML)
+    .join("\n");
+
+  printWindow.document.open();
+  printWindow.document.write(`
+    <!doctype html>
+    <html>
+      <head>
+        <title>4Head ERP</title>
+        ${styles}
+      </head>
+      <body>
+        <header class="statement-print-header">
+          <h1>Account History</h1>
+          <p>For the Period From, <strong>${startDate}</strong> to <strong>${endDate}</strong></p>
+        </header>
+        ${statement.outerHTML}
+      </body>
+    </html>
+  `);
+  printWindow.document.close();
+  printWindow.addEventListener("afterprint", () => printWindow.close(), {
+    once: true,
+  });
+  printWindow.focus();
+  printWindow.print();
+}
+
 // ---------------------------------------------------------------------------
-// Balance badge — sign convention confirmed against backend:
-//   LedgerService.getPartyStatement: debit adds to balance, credit subtracts.
-//   A positive closing balance means net debits > net credits for this party,
-//   i.e. the party owes the business (receivable / asset).
-//   A negative closing balance means the business owes the party (payable).
+// Balance badge — sign convention:
+//   LedgerService.getPartyStatement: debit subtracts from balance, credit adds.
+//   A negative closing balance means net debits > net credits for this party,
+//   i.e. the department receives from the party (receivable).
+//   A positive closing balance means the department pays to the party (payable).
 // ---------------------------------------------------------------------------
 
 function BalanceBadge({ balance }: { balance: string }) {
   const value = Number(balance);
-  if (value > 0)
-    return <Badge variant="success">Party owes {money.format(value)}</Badge>;
   if (value < 0)
+    return <Badge variant="success">Department receives {money.format(Math.abs(value))}</Badge>;
+  if (value > 0)
     return (
       <Badge variant="destructive">
-        Business owes {money.format(Math.abs(value))}
+        Department pays {money.format(value)}
       </Badge>
     );
   return <Badge variant="secondary">Settled</Badge>;
@@ -117,24 +168,27 @@ type PaymentFormValues = z.infer<typeof paymentSchema>;
 
 function RecordPaymentDialog({
   partyId,
+  editingEntry,
   open,
   onOpenChange,
 }: {
   partyId: string;
+  editingEntry?: PartyStatementEntry | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
-  const [recordPayment, { isLoading }] = useRecordPartyPaymentMutation();
+  const [recordPayment, recordState] = useRecordPartyPaymentMutation();
+  const [updatePayment, updateState] = useUpdatePartyPaymentMutation();
   const [accountSelection, setAccountSelection] =
     useState<PaymentAccountSelection>({});
   const form = useForm<PaymentFormValues>({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
-      amount: "",
-      paymentDate: new Date().toISOString().slice(0, 10),
+      amount: editingEntry?.amount ?? "",
+      paymentDate: editingEntry?.entryDate ?? new Date().toISOString().slice(0, 10),
       paymentMethod: "cash",
-      direction: "received",
-      notes: "",
+      direction: editingEntry?.entryType === "credit" ? "received" : "paid",
+      notes: editingEntry?.description ?? "",
     },
   });
   const paymentMethod = useWatch({
@@ -142,21 +196,36 @@ function RecordPaymentDialog({
     name: "paymentMethod",
   });
 
+  useEffect(() => {
+    if (open) {
+      form.reset({
+        amount: editingEntry?.amount ?? "",
+        paymentDate: editingEntry?.entryDate ?? new Date().toISOString().slice(0, 10),
+        paymentMethod: "cash",
+        direction: editingEntry?.entryType === "credit" ? "received" : "paid",
+        notes: editingEntry?.description ?? "",
+      });
+    }
+  }, [editingEntry, form, open]);
+
   const onSubmit = async (values: PaymentFormValues) => {
     form.clearErrors("root");
     try {
-      await recordPayment({
-        id: partyId,
-        body: {
+      const body = {
           amount: Number(values.amount),
           paymentDate: values.paymentDate,
           paymentMethod: values.paymentMethod,
           ...accountSelection,
           direction: values.direction,
           notes: values.notes || undefined,
-        },
-      }).unwrap();
-      toast.success("Payment recorded");
+        };
+      if (editingEntry) {
+        await updatePayment({ id: partyId, paymentId: editingEntry.sourceId, body }).unwrap();
+        toast.success("Payment updated");
+      } else {
+        await recordPayment({ id: partyId, body }).unwrap();
+        toast.success("Payment recorded");
+      }
       form.reset();
       onOpenChange(false);
     } catch (error) {
@@ -176,7 +245,7 @@ function RecordPaymentDialog({
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Record payment</DialogTitle>
+              <DialogTitle>{editingEntry ? "Edit payment" : "Record payment"}</DialogTitle>
           <DialogDescription>
             Record a cash or bank payment to or from this party.
           </DialogDescription>
@@ -224,6 +293,7 @@ function RecordPaymentDialog({
               paymentMethod={paymentMethod}
               value={accountSelection}
               onChange={setAccountSelection}
+              adminOnly
             />
             <FormField
               control={form.control}
@@ -278,12 +348,115 @@ function RecordPaymentDialog({
               >
                 Cancel
               </Button>
-              <Button type="submit" isLoading={isLoading}>
-                Record payment
+              <Button type="submit" isLoading={recordState.isLoading || updateState.isLoading}>
+                {editingEntry ? "Update payment" : "Record payment"}
               </Button>
             </DialogFooter>
           </form>
         </Form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function TransactionEditDialog({
+  entry,
+  open,
+  onOpenChange,
+}: {
+  entry: PartyStatementEntry | null;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [date, setDate] = useState(entry?.entryDate ?? "");
+  const [quantity, setQuantity] = useState(entry?.quantityKg ?? "");
+  const [rate, setRate] = useState(entry?.ratePerKg ?? "");
+  const [amount, setAmount] = useState(entry?.amount ?? "");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">("cash");
+  const [direction, setDirection] = useState<"received" | "paid">(
+    entry?.entryType === "credit" ? "received" : "paid",
+  );
+  const [notes, setNotes] = useState(entry?.description ?? "");
+  const [updateSale, saleState] = useUpdateSupplySaleMutation();
+  const [updatePurchase, purchaseState] = useUpdateSupplyPurchaseMutation();
+  const [updatePayment, paymentState] = useUpdatePartyPaymentMutation();
+
+  useEffect(() => {
+    if (open) {
+      setDate(entry?.entryDate ?? "");
+      setQuantity(entry?.quantityKg ?? "");
+      setRate(entry?.ratePerKg ?? "");
+      setAmount(entry?.amount ?? "");
+      setDirection(entry?.entryType === "credit" ? "received" : "paid");
+      setNotes(entry?.description ?? "");
+    }
+  }, [entry, open]);
+
+  const save = async () => {
+    if (!entry || !date) return;
+    try {
+      if (entry.sourceType === "sale") {
+        const body = { saleDate: date, ...(quantity !== entry.quantityKg ? { quantityKg: Number(quantity) } : {}), ...(rate !== entry.ratePerKg ? { ratePerKg: Number(rate) } : {}), ...(notes !== (entry.description ?? "") ? { notes } : {}) };
+        await updateSale({ id: entry.sourceId, body }).unwrap();
+      } else if (entry.sourceType === "purchase") {
+        const body = { purchaseDate: date, ...(quantity !== entry.quantityKg ? { quantityKg: Number(quantity) } : {}), ...(rate !== entry.ratePerKg ? { ratePerKg: Number(rate) } : {}), ...(notes !== (entry.description ?? "") ? { notes } : {}) };
+        await updatePurchase({ id: entry.sourceId, body }).unwrap();
+      } else if (entry.sourceType === "payment") {
+        const body = {
+          amount: Number(amount), direction, paymentDate: date, paymentMethod,
+          ...(notes ? { notes } : {}),
+        };
+        await updatePayment({
+          id: entry.partyId ?? "",
+          paymentId: entry.sourceId,
+          body,
+        }).unwrap();
+      }
+      toast.success("Transaction date updated");
+      onOpenChange(false);
+    } catch (error) {
+      toast.error(getApiErrorMessage(error));
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Edit transaction</DialogTitle>
+          <DialogDescription>If you change only the date, the existing accounting entries are moved without a cancellation reversal.</DialogDescription>
+        </DialogHeader>
+        <Label htmlFor="transaction-date">Date</Label>
+        <Input id="transaction-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
+        {entry?.sourceType === "payment" ? (
+          <>
+            <Label htmlFor="transaction-amount">Amount</Label>
+            <Input id="transaction-amount" type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} />
+            <Label htmlFor="transaction-direction">Direction</Label>
+            <Select value={direction} onValueChange={(value) => setDirection(value as "received" | "paid")}>
+              <SelectTrigger id="transaction-direction"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="received">Received</SelectItem><SelectItem value="paid">Paid</SelectItem></SelectContent>
+            </Select>
+            <Label htmlFor="transaction-payment-method">Payment method</Label>
+            <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as "cash" | "bank")}>
+              <SelectTrigger id="transaction-payment-method"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="bank">Bank</SelectItem></SelectContent>
+            </Select>
+          </>
+        ) : (
+          <>
+            <Label htmlFor="transaction-quantity">Quantity (kg)</Label>
+            <Input id="transaction-quantity" type="number" min="0.001" step="0.001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+            <Label htmlFor="transaction-rate">Rate/kg</Label>
+            <Input id="transaction-rate" type="number" min="0.01" step="0.01" value={rate} onChange={(event) => setRate(event.target.value)} />
+          </>
+        )}
+        <Label htmlFor="transaction-notes">Notes</Label>
+        <Input id="transaction-notes" value={notes} onChange={(event) => setNotes(event.target.value)} />
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
+          <Button onClick={() => void save()} isLoading={saleState.isLoading || purchaseState.isLoading || paymentState.isLoading}>Save changes</Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -294,10 +467,15 @@ function RecordPaymentDialog({
 // ---------------------------------------------------------------------------
 
 export function PartyStatementPage() {
+  const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
+  const [editingPayment, setEditingPayment] = useState<PartyStatementEntry | null>(null);
+  const [editingTransaction, setEditingTransaction] = useState<PartyStatementEntry | null>(null);
+  const [partyDialogOpen, setPartyDialogOpen] = useState(false);
+  const [deleteParty, deletePartyState] = useDeletePartyMutation();
 
   const partyQuery = useGetPartyQuery(id ?? "", { skip: !id });
 
@@ -333,18 +511,29 @@ export function PartyStatementPage() {
         cell: (entry) => entry.entryDate,
       },
       {
-        id: "sourceType",
-        header: "Source",
+        id: "description",
+        header: "Description",
         cell: (entry) => (
-          <span className="capitalize">
-            {entry.sourceType.replaceAll("_", " ")}
+          <span>
+            <span className="capitalize">
+              {entry.sourceType.replaceAll("_", " ")}
+            </span>
+            {entry.description ? ` - ${entry.description}` : ""}
           </span>
         ),
       },
       {
-        id: "description",
-        header: "Description",
-        cell: (entry) => entry.description ?? "—",
+        id: "quantityKg",
+        header: "Weight",
+        cell: (entry) =>
+          entry.quantityKg ? `${entry.quantityKg} kg` : "—",
+      },
+      {
+        id: "ratePerKg",
+        header: "Rate/kg",
+        align: "right",
+        cell: (entry) =>
+          entry.ratePerKg ? money.format(Number(entry.ratePerKg)) : "—",
       },
       {
         id: "debit",
@@ -371,26 +560,73 @@ export function PartyStatementPage() {
         cell: (entry) => {
           const val = Number(entry.runningBalance);
           if (isInvestorParty) {
-            if (val < 0)
-              return (
-                <span className="text-destructive">
-                  {money.format(Math.abs(val))} Payable
-                </span>
-              );
             if (val > 0)
               return (
+                <span className="text-destructive">
+                  {money.format(val)} Payable
+                </span>
+              );
+            if (val < 0)
+              return (
                 <span className="text-emerald-700">
-                  {money.format(val)} Receivable
+                  {money.format(Math.abs(val))} Receivable
                 </span>
               );
             return <span>Settled</span>;
           }
           return (
-            <span className={val < 0 ? "text-destructive" : undefined}>
+            <span className={val > 0 ? "text-destructive" : undefined}>
               {money.format(val)}
             </span>
           );
         },
+      },
+      {
+        id: "actions",
+        header: "Actions",
+        align: "right",
+        cell: (entry) => (
+          <div className="flex justify-end gap-2 print:hidden">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (entry.sourceType === "sale") {
+                  setEditingTransaction(entry);
+                } else if (entry.sourceType === "purchase") {
+                  setEditingTransaction(entry);
+                } else if (entry.sourceType === "payment") {
+                  setEditingTransaction(entry);
+                } else {
+                  toast.info("This transaction cannot be edited from the statement");
+                }
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden />
+              Edit
+            </Button>
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              onClick={() => {
+                if (entry.sourceType === "sale") {
+                  navigate(`/supply/sales?transactionId=${entry.sourceId}`);
+                } else if (entry.sourceType === "purchase") {
+                  navigate(`/supply/purchases?transactionId=${entry.sourceId}`);
+                } else if (entry.sourceType === "payment") {
+                  toast.info("Payment reversal is not available yet");
+                } else {
+                  toast.info("This transaction cannot be cancelled from the statement");
+                }
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" aria-hidden />
+              Delete
+            </Button>
+          </div>
+        ),
       },
     ],
     [isInvestorParty],
@@ -447,16 +683,40 @@ export function PartyStatementPage() {
   const closingBalance = fullStatementQuery.data?.data.closingBalance ?? "0.00";
   const isInternal = partyData.partyType === PartyType.INTERNAL_DEPARTMENT;
   const isInvestor = partyData.partyType === PartyType.INVESTOR;
+  const departmentOptions = [
+    ...partyData.departments,
+    ...(partyData.primaryDepartment ? [partyData.primaryDepartment] : []),
+    ...(partyData.linkedDepartment ? [partyData.linkedDepartment] : []),
+  ].filter(
+    (department, index, options) =>
+      options.findIndex(({ id: departmentId }) => departmentId === department.id) === index,
+  );
+  const hasStatementPeriod = Boolean(startDate && endDate);
+  const totalDebit = entries.reduce(
+    (sum, entry) =>
+      entry.entryType === "debit" ? sum + Number(entry.amount) : sum,
+    0,
+  );
+  const totalCredit = entries.reduce(
+    (sum, entry) =>
+      entry.entryType === "credit" ? sum + Number(entry.amount) : sum,
+    0,
+  );
+  const periodClosingBalance = entries.at(-1)?.runningBalance ?? "0.00";
 
   return (
-    <PageContainer>
+    <PageContainer className="statement-print">
       <PageHeader
         title={partyData.name}
-        description={partyTypeLabels[partyData.partyType]}
+        description={
+          <span className="print:hidden">
+            {partyTypeLabels[partyData.partyType]}
+          </span>
+        }
         breadcrumb={
           <Link
             to="/parties"
-            className="inline-flex items-center gap-1 hover:underline"
+            className="print:hidden inline-flex items-center gap-1 hover:underline"
           >
             <ArrowLeft className="h-3 w-3" aria-hidden />
             Parties
@@ -465,10 +725,36 @@ export function PartyStatementPage() {
         actions={
           <div className="flex flex-wrap items-center gap-2 print:hidden">
             <BalanceBadge balance={closingBalance} />
-            <Button variant="outline" onClick={() => window.print()}>
-              <Printer className="h-4 w-4" aria-hidden />
-              Print statement
-            </Button>
+            {!isInternal ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setPartyDialogOpen(true)}
+                  title="Edit party"
+                >
+                  <Pencil className="h-4 w-4" aria-hidden />
+                  Edit
+                </Button>
+                <Button
+                  variant="destructive"
+                  disabled={deletePartyState.isLoading}
+                  onClick={async () => {
+                    if (!window.confirm(`Delete ${partyData.name}?`)) return;
+                    try {
+                      await deleteParty(partyData.id).unwrap();
+                      toast.success("Party deleted");
+                      navigate("/parties");
+                    } catch (error) {
+                      toast.error(getApiErrorMessage(error));
+                    }
+                  }}
+                  title="Delete party"
+                >
+                  <Trash2 className="h-4 w-4" aria-hidden />
+                  Delete
+                </Button>
+              </>
+            ) : null}
             {!isInternal && !isInvestor ? (
               <Button onClick={() => setPaymentDialogOpen(true)}>
                 <ReceiptText className="h-4 w-4" aria-hidden />
@@ -481,16 +767,16 @@ export function PartyStatementPage() {
 
       <StatCardGrid>
         <StatCard
-          label="Receivable from party"
+          label="Payable to party"
           value={money.format(Math.max(Number(closingBalance), 0))}
           icon={TrendingUp}
-          tone="success"
+          tone="danger"
         />
         <StatCard
-          label="Payable to party"
+          label="Receivable from party"
           value={money.format(Math.max(-Number(closingBalance), 0))}
           icon={TrendingDown}
-          tone="danger"
+          tone="success"
         />
       </StatCardGrid>
 
@@ -518,11 +804,43 @@ export function PartyStatementPage() {
         </div>
       </div>
 
+      <div className="flex justify-end print:hidden">
+        <Button
+          variant="outline"
+          disabled={!hasStatementPeriod}
+          onClick={() => printStatement(startDate, endDate)}
+          title={
+            hasStatementPeriod
+              ? "Print statement for the selected dates"
+              : "Select both dates before printing"
+          }
+        >
+          <Printer className="h-4 w-4" aria-hidden />
+          Print statement
+        </Button>
+      </div>
+
       {/* Statement table */}
       <DataTable
         columns={columns}
         data={entries}
         getRowId={(entry) => entry.id}
+        footerContent={
+          entries.length ? (
+            <>
+              <tr className="statement-total-row">
+                <td colSpan={4} className="text-right">Total</td>
+                <td className="text-right">{money.format(totalDebit)}</td>
+                <td className="text-right">{money.format(totalCredit)}</td>
+                <td className="text-right">{money.format(Number(periodClosingBalance))}</td>
+              </tr>
+              <tr className="statement-closing-row">
+                <td colSpan={7} className="text-right">Closing Balance</td>
+                <td className="text-right">{money.format(Number(periodClosingBalance))}</td>
+              </tr>
+            </>
+          ) : null
+        }
         emptyContent={
           <EmptyState
             icon={ReceiptText}
@@ -539,9 +857,28 @@ export function PartyStatementPage() {
       {/* Record payment dialog */}
       <RecordPaymentDialog
         partyId={id}
+        editingEntry={editingPayment}
         open={paymentDialogOpen}
-        onOpenChange={setPaymentDialogOpen}
+        onOpenChange={(open) => {
+          setPaymentDialogOpen(open);
+          if (!open) setEditingPayment(null);
+        }}
       />
+      <TransactionEditDialog
+        entry={editingTransaction}
+        open={Boolean(editingTransaction)}
+        onOpenChange={(open) => {
+          if (!open) setEditingTransaction(null);
+        }}
+      />
+      {partyDialogOpen ? (
+        <PartyFormDialog
+          open
+          onOpenChange={setPartyDialogOpen}
+          party={partyData}
+          departmentOptions={departmentOptions}
+        />
+      ) : null}
     </PageContainer>
   );
 }

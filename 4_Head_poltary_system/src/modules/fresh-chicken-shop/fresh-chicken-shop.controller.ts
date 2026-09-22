@@ -106,6 +106,14 @@ export class FreshChickenShopController {
   createStockWriteoff(@Body() dto: StockWriteoffDto, @Req() req: Request) {
     return this.shopService.createStockWriteoff(dto, (req as any).user.id);
   }
+  @Get('stock/writeoffs')
+  listStockWriteoffs() { return this.shopService.listStockWriteoffs(); }
+  @Get('stock/writeoffs/:id')
+  getStockWriteoff(@Param('id') id: string) { return this.shopService.getStockWriteoff(id); }
+  @Patch('stock/writeoffs/:id')
+  updateStockWriteoff(@Param('id') id: string, @Body() dto: Partial<StockWriteoffDto>, @Req() req: Request) { return this.shopService.updateStockWriteoff(id, dto, (req as any).user.id); }
+  @Delete('stock/writeoffs/:id')
+  deleteStockWriteoff(@Param('id') id: string, @Req() req: Request) { return this.shopService.deleteStockWriteoff(id, (req as any).user.id); }
 
   @Get('reports/profit-loss')
   @ApiQuery({ name: 'from', required: false })

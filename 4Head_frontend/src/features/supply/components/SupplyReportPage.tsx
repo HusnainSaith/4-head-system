@@ -25,6 +25,9 @@ const Report = ({ title, data }: { title: string; data: ProfitLossView }) => (
     <h2 className="text-lg font-semibold">{title}</h2>
     <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       {[
+        ["Purchase Weight", `${data.purchaseQuantityKg} kg`],
+        ["Sale Weight", `${data.saleQuantityKg} kg`],
+        ["Shrinkage", `${data.shrinkageKg} kg`],
         ["Revenue", data.revenue],
         ["COGS", data.cogs],
         ["Gross Profit", data.grossProfit],
@@ -35,7 +38,7 @@ const Report = ({ title, data }: { title: string; data: ProfitLossView }) => (
         <StatCard
           key={label}
           label={label}
-          value={money.format(Number(value))}
+          value={String(label).includes("Weight") || label === "Shrinkage" ? String(value) : money.format(Number(value))}
           tone={reportTone(label, value)}
         />
       ))}

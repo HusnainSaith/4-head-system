@@ -4,7 +4,6 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
-  Unique,
   ManyToMany,
   JoinTable,
 } from 'typeorm';
@@ -14,12 +13,11 @@ import { PartyTypeEnum } from '../../../common/types/party-type.enum';
 import { User } from '../../users/entities/user.entity';
 
 @Entity('parties')
-@Unique(['name'])
 export class Party extends AuditBaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'user_id', type: 'uuid', nullable: true, unique: true })
+  @Column({ name: 'user_id', type: 'uuid', nullable: true })
   userId?: string;
 
   @ManyToOne(() => User, { nullable: true })

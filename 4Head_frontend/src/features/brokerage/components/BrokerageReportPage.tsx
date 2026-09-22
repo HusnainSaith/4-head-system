@@ -34,7 +34,11 @@ export function BrokerageReportPage() {
             type="date"
             value={from}
             max={to || undefined}
-            onChange={(e) => setFrom(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setFrom(value);
+              if (!to) setTo(value);
+            }}
           />
         </div>
         <div>
@@ -48,6 +52,10 @@ export function BrokerageReportPage() {
           />
         </div>
       </div>
+      <p className="text-sm text-muted-foreground">
+        Both dates are included. For a single-day report, use the same date in
+        From and To.
+      </p>
       {invalid ? (
         <ErrorState
           title="Invalid date range"
@@ -63,6 +71,9 @@ export function BrokerageReportPage() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <StatCard label="Purchase weight" value={`${query.data.data.purchaseQuantityKg} kg`} />
+          <StatCard label="Sale weight" value={`${query.data.data.saleQuantityKg} kg`} />
+          <StatCard label="Shrinkage" value={`${query.data.data.shrinkageKg} kg`} tone="danger" />
           <StatCard
             label="Revenue"
             value={money.format(Number(query.data.data.revenue))}

@@ -112,6 +112,14 @@ vi.mock("../supplyApi", () => ({
     isError: false,
   }),
   useCreateSupplyStockWriteoffMutation: () => [vi.fn(), { isLoading: false }],
+  useListSupplyStockWriteoffsQuery: () => ({
+    data: { data: [{ id: "w1", quantityKg: "1.500", reason: "spoilage", writeoffDate: "2026-07-12", valuationAmount: "337.50", note: "damaged" }] },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
+  useUpdateSupplyStockWriteoffMutation: () => [vi.fn(), { isLoading: false }],
+  useDeleteSupplyStockWriteoffMutation: () => [vi.fn(), { isLoading: false }],
   useListInternalTransfersQuery: () => ({
     data: {
       data: {
@@ -148,6 +156,9 @@ vi.mock("../supplyApi", () => ({
           operatingExpenses: "10",
           payroll: "5",
           netProfit: "45",
+          purchaseQuantityKg: "10.000",
+          saleQuantityKg: "5.000",
+          shrinkageKg: "1.000",
         },
         includingInternalTransfers: {
           revenue: "300",
@@ -156,6 +167,9 @@ vi.mock("../supplyApi", () => ({
           operatingExpenses: "20",
           payroll: "15",
           netProfit: "145",
+          purchaseQuantityKg: "10.000",
+          saleQuantityKg: "7.000",
+          shrinkageKg: "1.000",
         },
       },
     },
@@ -197,6 +211,10 @@ describe("Supply pages", () => {
     expect(
       screen.getByText(/internal transfers sent to the Fresh Chicken Shop/i),
     ).toBeInTheDocument();
+    expect(screen.getByText("Shrinkage records")).toBeInTheDocument();
+    expect(screen.getByText("1.500 kg")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
   it("keeps both report views distinct", () => {
     render(<SupplyReportPage />);
@@ -206,6 +224,7 @@ describe("Supply pages", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("Revenue")).toHaveLength(2);
     expect(screen.getByText(/300/)).toBeInTheDocument();
+    expect(screen.getAllByText("10.000 kg")).toHaveLength(2);
   });
   it("renders partial transfer balances and settlement action", () => {
     render(<InternalTransfersPage />);

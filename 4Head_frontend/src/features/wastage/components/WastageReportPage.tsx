@@ -65,6 +65,9 @@ export function WastageReportPage() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <StatCard label="Purchase Weight" value={`${data.purchaseQuantityKg} kg`} />
+          <StatCard label="Sale Weight" value={`${data.saleQuantityKg} kg`} />
+          <StatCard label="Shrinkage" value={`${data.shrinkageKg} kg`} tone="danger" />
           <StatCard
             label="Revenue"
             value={money.format(Number(data.revenue))}

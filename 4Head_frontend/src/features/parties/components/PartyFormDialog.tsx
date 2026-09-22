@@ -431,7 +431,7 @@ export function PartyFormDialog({
                   control={form.control}
                   name="openingBalance"
                   label="Opening balance"
-                  description="Positive = party owes the business (receivable). Negative = business owes the party (payable)."
+                  description="Positive = business owes the party (payable). Negative = party owes the business (receivable)."
                 >
                   {(field) => (
                     <Input

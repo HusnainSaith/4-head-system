@@ -18,6 +18,8 @@ const mockUpdate = vi.fn();
 vi.mock("@/features/parties/partiesApi", () => ({
   useCreatePartyMutation: vi.fn(() => [mockCreate, { isLoading: false }]),
   useUpdatePartyMutation: vi.fn(() => [mockUpdate, { isLoading: false }]),
+  useAdjustPartyBalanceMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
+  useGetPartyQuery: vi.fn(() => ({ refetch: vi.fn() })),
 }));
 vi.mock("@/features/users/usersApi", () => ({
   useListPartyUsersQuery: () => ({

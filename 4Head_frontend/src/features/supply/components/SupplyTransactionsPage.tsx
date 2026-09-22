@@ -35,7 +35,7 @@ import {
   selectUserRole,
 } from "@/features/auth/authSlice";
 import { useListPartiesQuery } from "@/features/parties/partiesApi";
-import { PartyType } from "@/features/parties/types";
+import { useListDepartmentsQuery } from "@/features/departments/departmentsApi";
 import { DepartmentBalancesPanel } from "@/features/parties/components/DepartmentBalancesPanel";
 import { DepartmentVehicleSelect } from "@/features/vehicles/components/DepartmentVehicleSelect";
 import { InvoiceButton } from "@/features/invoices/components/InvoiceButton";
@@ -144,7 +144,7 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
       : []),
     {
       id: "quantity",
-      header: "Quantity",
+      header: "Weight",
       cell: (row) => `${row.quantityKg} kg`,
       align: "right",
     },
@@ -408,11 +408,14 @@ function TransactionDialog({
   onClose: () => void;
   onSubmit: (body: CreatePurchaseRequest | CreateSaleRequest) => Promise<void>;
 }) {
-  const partyType =
-    kind === "purchase" ? PartyType.BROKER : PartyType.SHOP_OWNER;
+  const role = useSelector(selectUserRole);
+  const isAdmin = role === Role.OWNER || role === Role.ACCOUNTANT;
+  const [partySearch, setPartySearch] = useState("");
+  const departments = useListDepartmentsQuery(undefined, { skip: !open });
+  const supplyDeptId = departments.data?.data.find((d) => d.type === "SUPPLY")?.id;
   const parties = useListPartiesQuery(
-    { type: partyType, limit: 100 },
-    { skip: !open },
+    { departmentId: supplyDeptId, search: isAdmin ? partySearch || undefined : undefined, limit: isAdmin ? 50 : 200 },
+    { skip: !open || !supplyDeptId },
   );
   const [partyId, setPartyId] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -498,6 +501,14 @@ function TransactionDialog({
           ) : null}
           <div>
             <Label>{kind === "purchase" ? "Broker" : "Shop owner"}</Label>
+            {isAdmin && (
+              <Input
+                placeholder="Search parties…"
+                value={partySearch}
+                onChange={(e) => { setPartySearch(e.target.value); setPartyId(""); }}
+                className="mb-1"
+              />
+            )}
             <Select
               value={partyId || "none"}
               onValueChange={(v) => setPartyId(v === "none" ? "" : v)}
@@ -516,7 +527,7 @@ function TransactionDialog({
             </Select>
           </div>
           <div>
-            <Label htmlFor={`${kind}-quantity`}>Quantity (kg)</Label>
+            <Label htmlFor={`${kind}-quantity`}>Weight (kg)</Label>
             <Input
               id={`${kind}-quantity`}
               type="number"

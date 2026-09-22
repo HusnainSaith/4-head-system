@@ -1,4 +1,10 @@
-import { useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/common/PageHeader";
 import { PageContainer } from "@/components/layout/PageContainer";
@@ -438,6 +444,28 @@ function PaymentDialog({
     paymentMethod: "cash",
     recipientName: "",
   });
+  const cashOptions = useMemo(
+    () =>
+      (cash.data?.data ?? []).filter(
+        (item) =>
+          item.account.isShared ||
+          !form.departmentId ||
+          item.account.departmentId === form.departmentId,
+      ),
+    [cash.data?.data, form.departmentId],
+  );
+  useEffect(() => {
+    if (
+      form.paymentMethod === "cash" &&
+      cashOptions.length === 1 &&
+      !form.cashAccountId
+    ) {
+      setForm((current) => ({
+        ...current,
+        cashAccountId: cashOptions[0].account.id,
+      }));
+    }
+  }, [cashOptions, form.cashAccountId, form.paymentMethod]);
   const update = <K extends keyof RecordZakatFundPayment>(
     key: K,
     value: RecordZakatFundPayment[K],
@@ -558,12 +586,7 @@ function PaymentDialog({
                     <SelectValue placeholder="Select cash account" />
                   </SelectTrigger>
                   <SelectContent>
-                    {(cash.data?.data ?? [])
-                      .filter(
-                        (item) =>
-                          item.account.departmentId === form.departmentId,
-                      )
-                      .map((item) => (
+                    {cashOptions.map((item) => (
                         <SelectItem
                           key={item.account.id}
                           value={item.account.id}

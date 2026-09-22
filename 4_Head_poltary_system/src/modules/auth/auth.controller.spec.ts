@@ -6,6 +6,7 @@ describe('AuthController cookie sessions', () => {
   const authService = {
     login: jest.fn(),
     refreshToken: jest.fn(),
+    validateUser: jest.fn(),
   };
   const controller = new AuthController(authService as unknown as AuthService);
   const response = () =>
@@ -20,7 +21,10 @@ describe('AuthController cookie sessions', () => {
       data: {
         accessToken: 'access',
         refreshToken: 'refresh',
-        user: { id: 'u1' },
+        user: {
+          id: 'u1',
+          role: { id: 'r1', name: 'owner', description: null },
+        },
       },
     });
     const res = response();
@@ -38,7 +42,9 @@ describe('AuthController cookie sessions', () => {
       'refresh',
       expect.objectContaining({ httpOnly: true, sameSite: 'strict' }),
     );
-    expect(result.data).toEqual({ user: { id: 'u1' } });
+    expect(result.data).toEqual({
+      user: { id: 'u1', role: { id: 'r1', name: 'owner', description: null } },
+    });
   });
 
   it('rotates both session cookies on refresh', async () => {

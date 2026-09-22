@@ -12,6 +12,12 @@ describe('SupplyService', () => {
   const repository = {
     findTransferById: jest.fn(),
     updateTransfer: jest.fn(),
+    sumActivePurchaseQuantity: jest.fn().mockResolvedValue('100.000'),
+    sumActiveSaleQuantity: jest.fn().mockResolvedValue('80.000'),
+    sumActiveTransferQuantity: jest.fn().mockResolvedValue('20.000'),
+    sumActiveSaleTotal: jest.fn().mockResolvedValue('1000.00'),
+    sumActiveTransferTotal: jest.fn().mockResolvedValue('500.00'),
+    sumActivePurchaseTotal: jest.fn().mockResolvedValue('900.00'),
   };
   const ledger = { post: jest.fn(), sumByAccount: jest.fn() };
   const dataSource = {
@@ -19,10 +25,11 @@ describe('SupplyService', () => {
       work(manager),
     ),
   };
+  const inventory = { sumMovementQuantity: jest.fn().mockResolvedValue('10.000'), sumWriteoffQuantity: jest.fn().mockResolvedValue('1.000') };
   const service = new SupplyService(
     repository as unknown as SupplyRepository,
     {} as DepartmentsService,
-    {} as InventoryService,
+    inventory as unknown as InventoryService,
     ledger as unknown as LedgerService,
     dataSource as unknown as DataSource,
   );
@@ -131,15 +138,20 @@ describe('SupplyService', () => {
     expect(report.externalOnly).toEqual(
       expect.objectContaining({
         revenue: '1000.00',
-        grossProfit: '400.00',
-        netProfit: '250.00',
+        cogs: '900.00',
+        grossProfit: '100.00',
+        netProfit: '-50.00',
+        purchaseQuantityKg: '100.000',
+        saleQuantityKg: '80.000',
       }),
     );
     expect(report.includingInternalTransfers).toEqual(
       expect.objectContaining({
         revenue: '1500.00',
-        grossProfit: '700.00',
-        netProfit: '550.00',
+        cogs: '900.00',
+        grossProfit: '600.00',
+        netProfit: '450.00',
+        saleQuantityKg: '100.000',
       }),
     );
   });

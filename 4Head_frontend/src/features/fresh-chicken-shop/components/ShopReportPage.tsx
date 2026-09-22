@@ -72,6 +72,9 @@ export function ShopReportPage() {
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 mt-4">
+          <StatCard label="Purchase weight" value={`${data.purchaseQuantityKg} kg`} />
+          <StatCard label="Sale weight" value={`${data.saleQuantityKg} kg`} />
+          <StatCard label="Shrinkage" value={`${data.shrinkageKg} kg`} tone="danger" />
           <StatCard
             label="Revenue"
             value={money.format(Number(data.revenue))}

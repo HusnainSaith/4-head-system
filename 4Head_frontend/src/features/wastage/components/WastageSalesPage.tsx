@@ -70,7 +70,7 @@ const saleSchema = z
     ]),
     quantityKg: z.coerce
       .number()
-      .positive("Quantity must be greater than zero."),
+      .positive("Weight must be greater than zero."),
     ratePerKg: z.coerce.number().positive("Rate must be greater than zero."),
     paymentMethod: z.enum(["cash", "bank", "credit"]),
     amountReceived: z.coerce
@@ -192,7 +192,7 @@ export function WastageSalesPage() {
     },
     {
       id: "quantity",
-      header: "Quantity",
+      header: "Weight",
       cell: (row) => `${row.quantityKg} kg`,
       align: "right",
     },
@@ -490,7 +490,7 @@ function SaleDialog({
             </Select>
           </Field>
           <Field
-            label={`Quantity (kg) — available: ${available}kg`}
+            label={`Weight (kg) — available: ${available}kg`}
             error={errors.quantityKg?.message}
           >
             <Input

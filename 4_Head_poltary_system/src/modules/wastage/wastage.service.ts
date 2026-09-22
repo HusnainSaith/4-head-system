@@ -397,39 +397,43 @@ export class WastageService implements OnModuleInit {
       ),
     );
   }
+  listStockWriteoffs() { return this.inventoryService.listWriteoffs(this.wastageDeptId); }
+  getStockWriteoff(id: string) { return this.inventoryService.getWriteoff(id, this.wastageDeptId); }
+  updateStockWriteoff(id: string, dto: any, actorId: string) { return this.dataSource.transaction((manager) => this.inventoryService.updateWriteoff(id, this.wastageDeptId, dto, actorId, manager)); }
+  async deleteStockWriteoff(id: string, actorId: string) { await this.dataSource.transaction((manager) => this.inventoryService.deleteWriteoff(id, this.wastageDeptId, actorId, manager)); return { success: true }; }
 
   async getProfitLoss(from?: string, to?: string) {
-    const startDate = from ? new Date(from) : new Date('1970-01-01');
-    const endDate = to ? new Date(to) : new Date();
+    const fromDate = from ?? '1970-01-01';
+    const toDate = to ?? new Date().toISOString().slice(0, 10);
 
     const [revenue, cogs, operatingExpenses, payrollExpenses] =
       await Promise.all([
         this.ledgerService.sumByAccount(
           this.wastageDeptId,
           'revenue',
-          startDate,
-          endDate,
+          fromDate,
+          toDate,
           'credit',
         ),
         this.ledgerService.sumByAccount(
           this.wastageDeptId,
           'cogs',
-          startDate,
-          endDate,
+          fromDate,
+          toDate,
           'debit',
         ),
         this.ledgerService.sumByAccount(
           this.wastageDeptId,
           'operating_expense',
-          startDate,
-          endDate,
+          fromDate,
+          toDate,
           'debit',
         ),
         this.ledgerService.sumByAccount(
           this.wastageDeptId,
           'payroll_expense',
-          startDate,
-          endDate,
+          fromDate,
+          toDate,
           'debit',
         ),
       ]);
@@ -440,6 +444,11 @@ export class WastageService implements OnModuleInit {
       parseFloat(operatingExpenses) -
       parseFloat(payrollExpenses)
     ).toFixed(2);
+    const [purchaseQuantityKg, saleQuantityKg, shrinkageKg] = await Promise.all([
+      this.wastageRepository.sumActivePurchaseQuantity(from, to),
+      this.wastageRepository.sumActiveSaleQuantity(from, to),
+      this.inventoryService.sumWriteoffQuantity(this.wastageDeptId, fromDate, toDate),
+    ]);
 
     return {
       revenue,
@@ -448,6 +457,9 @@ export class WastageService implements OnModuleInit {
       operatingExpenses,
       payrollExpenses,
       netProfit,
+      purchaseQuantityKg,
+      saleQuantityKg,
+      shrinkageKg,
     };
   }
 }

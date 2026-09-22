@@ -116,6 +116,9 @@ export const wastageApi = apiSlice.injectEndpoints({
         { type: "Expense", id: "LIST" },
       ],
     }),
+    listWastageStockWriteoffs: builder.query<ApiResponse<StockWriteoffResponse[]>, void>({ query: () => "/wastage/stock/writeoffs", providesTags: [{ type: "WastageStock", id: "WRITEOFFS" }] }),
+    updateWastageStockWriteoff: builder.mutation<ApiResponse<StockWriteoffResponse>, { id: string; body: StockWriteoffInput }>({ query: ({ id, body }) => ({ url: `/wastage/stock/writeoffs/${id}`, method: "PATCH", body }), invalidatesTags: [{ type: "WastageStock", id: "CURRENT" }, { type: "WastageStock", id: "WRITEOFFS" }, { type: "WastageReport", id: "PROFIT_LOSS" }, { type: "Expense", id: "LIST" }] }),
+    deleteWastageStockWriteoff: builder.mutation<ApiResponse<void>, string>({ query: (id) => ({ url: `/wastage/stock/writeoffs/${id}`, method: "DELETE" }), invalidatesTags: [{ type: "WastageStock", id: "CURRENT" }, { type: "WastageStock", id: "WRITEOFFS" }, { type: "WastageReport", id: "PROFIT_LOSS" }, { type: "Expense", id: "LIST" }] }),
     getProfitLossReport: builder.query<
       ApiResponse<ProfitLossReport>,
       ProfitLossParams | void
@@ -146,5 +149,8 @@ export const {
   useDeleteSaleMutation,
   useGetStockQuery,
   useCreateWastageStockWriteoffMutation,
+  useListWastageStockWriteoffsQuery,
+  useUpdateWastageStockWriteoffMutation,
+  useDeleteWastageStockWriteoffMutation,
   useGetProfitLossReportQuery,
 } = wastageApi;

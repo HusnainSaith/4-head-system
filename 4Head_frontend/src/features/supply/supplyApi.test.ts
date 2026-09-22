@@ -151,6 +151,7 @@ describe("supplyApi contracts", () => {
   it("posts Supply shrinkage to the dedicated backend endpoint", async () => {
     const body = {
       quantityKg: 2,
+      ratePerKg: 300,
       reason: "other" as const,
       writeoffDate: "2026-07-15",
     };

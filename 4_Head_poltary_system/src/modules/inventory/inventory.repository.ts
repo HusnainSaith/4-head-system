@@ -147,4 +147,64 @@ export class InventoryRepository {
       : this.writeoffRepo;
     return repo.save(repo.create(writeoff));
   }
+
+  findWriteoffs(departmentId: string) {
+    return this.writeoffRepo.find({
+      where: { departmentId } as any,
+      order: { writeoffDate: 'DESC', createdAt: 'DESC' },
+    });
+  }
+
+  findWriteoff(id: string, departmentId: string, manager?: EntityManager) {
+    const repo = manager
+      ? manager.getRepository(StockWriteoff)
+      : this.writeoffRepo;
+    return repo.findOne({ where: { id, departmentId } as any });
+  }
+
+  async softDeleteWriteoff(
+    id: string,
+    updatedBy: string,
+    manager: EntityManager,
+  ) {
+    await manager.update(StockWriteoff, id, {
+      deletedAt: new Date(),
+      updatedBy,
+    });
+  }
+
+  async sumWriteoffQuantity(
+    departmentId: string,
+    from?: string,
+    to?: string,
+  ): Promise<string> {
+    const query = this.writeoffRepo
+      .createQueryBuilder('writeoff')
+      .select('COALESCE(SUM(writeoff.quantityKg), 0)', 'total')
+      .where('writeoff.departmentId = :departmentId', { departmentId })
+      .andWhere('writeoff.deletedAt IS NULL');
+    if (from) query.andWhere('writeoff.writeoffDate >= :from', { from });
+    if (to) query.andWhere('writeoff.writeoffDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
+
+  async sumMovementQuantity(
+    departmentId: string,
+    movementTypes: string[],
+    from: Date,
+    to: Date,
+  ): Promise<string> {
+    const row = await this.movementRepo.createQueryBuilder('movement')
+      .select('COALESCE(SUM(movement.quantityKg), 0)', 'total')
+      .where('movement.departmentId = :departmentId', { departmentId })
+      .andWhere('movement.movementType IN (:...movementTypes)', { movementTypes })
+      .andWhere('movement.sourceType != :writeoffSource', {
+        writeoffSource: 'stock_writeoff',
+      })
+      .andWhere('movement.movementDate >= :from', { from })
+      .andWhere('movement.movementDate < :to', { to })
+      .getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
 }

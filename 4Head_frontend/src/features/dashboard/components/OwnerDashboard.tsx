@@ -99,13 +99,13 @@ export function OwnerDashboard() {
   );
   const totalReceivable = total(
     balanceData
-      .filter((item) => Number(item.balance) > 0)
-      .map((item) => item.balance),
+      .filter((item) => Number(item.balance) < 0)
+      .map((item) => String(Math.abs(Number(item.balance)))),
   );
   const totalPayable = total(
     balanceData
-      .filter((item) => Number(item.balance) < 0)
-      .map((item) => String(Math.abs(Number(item.balance)))),
+      .filter((item) => Number(item.balance) > 0)
+      .map((item) => item.balance),
   );
   const departmentStock = Object.values(
     stockData.reduce<Record<string, { name: string; quantity: number }>>(
@@ -185,15 +185,16 @@ export function OwnerDashboard() {
           />
         )}
       </DashboardSection>
-      <DashboardSection title="Per-department revenue and gross profit">
+      <DashboardSection title="Per-department profit and loss">
         <p className="mb-4 text-sm text-muted-foreground">
-          All recorded external sales. Internal Supply transfers are excluded so
-          these figures reconcile with consolidated revenue.
+          Uses the same revenue, cost, expense, and payroll entries as each
+          department report. Internal Supply transfers are excluded.
         </p>
         {departmentProfitData.length ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
             {departmentProfitData.map((item) => {
               const grossProfit = Number(item.grossProfit);
+              const netProfit = Number(item.netProfit);
               const route =
                 item.departmentType === "FRESH_CHICKEN_SHOP"
                   ? "/shop/reports/profit-loss"
@@ -230,24 +231,43 @@ export function OwnerDashboard() {
                         {money.format(Number(item.revenue))}
                       </p>
                     </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Gross profit
+                        </p>
+                        <p className="mt-1 font-semibold">{money.format(grossProfit)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                          Expenses + payroll
+                        </p>
+                        <p className="mt-1 font-semibold">
+                          {money.format(
+                            Number(item.operatingExpenses) +
+                              Number(item.payrollExpenses),
+                          )}
+                        </p>
+                      </div>
+                    </div>
                     <div
                       className={`rounded-lg border p-3 ${
-                        grossProfit >= 0
+                        netProfit >= 0
                           ? "border-emerald-200 bg-emerald-50/80 dark:border-emerald-900 dark:bg-emerald-950/20"
                           : "border-red-200 bg-red-50/80 dark:border-red-900 dark:bg-red-950/20"
                       }`}
                     >
                       <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                        Gross profit
+                        Net profit
                       </p>
                       <p
                         className={`mt-1 text-lg font-bold ${
-                          grossProfit >= 0
+                          netProfit >= 0
                             ? "text-emerald-700 dark:text-emerald-400"
                             : "text-red-700 dark:text-red-400"
                         }`}
                       >
-                        {money.format(grossProfit)}
+                        {money.format(netProfit)}
                       </p>
                     </div>
                     <Button asChild variant="outline" className="w-full">
@@ -261,7 +281,7 @@ export function OwnerDashboard() {
         ) : (
           <EmptyState
             title="No department sales found"
-            description="Revenue and gross profit will appear after sales are recorded."
+            description="Profit and loss will appear after transactions are recorded."
           />
         )}
       </DashboardSection>

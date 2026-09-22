@@ -11,6 +11,7 @@ let backend;
 let mainWindow;
 let isQuitting = false;
 let backendErrorTail = "";
+let pendingSnapshotState;
 
 function formatError(error) {
   if (error instanceof Error) return error.stack || error.message;
@@ -41,6 +42,45 @@ function reservePort() {
       server.close(() => resolve(port));
     });
   });
+}
+
+function prepareSnapshotUpgrade(databaseDir, backendDir) {
+  const manifestPath = path.join(
+    backendDir,
+    "initial-database-manifest.json",
+  );
+  if (!fs.existsSync(manifestPath)) return null;
+
+  const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  const generation = String(manifest.snapshotVersion || 1);
+  const statePath = path.join(app.getPath("userData"), "snapshot-state.json");
+  const state = fs.existsSync(statePath)
+    ? JSON.parse(fs.readFileSync(statePath, "utf8"))
+    : null;
+  if (state?.generation === generation && state?.status === "complete") {
+    return null;
+  }
+  if (state?.generation === generation && state?.status === "upgrading") {
+    return { generation, statePath, manifest };
+  }
+
+  let backupDir = null;
+  if (fs.existsSync(path.join(databaseDir, "PG_VERSION"))) {
+    const backupRoot = path.join(app.getPath("userData"), "database-backups");
+    fs.mkdirSync(backupRoot, { recursive: true });
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    backupDir = path.join(backupRoot, `postgres-data-before-snapshot-${timestamp}`);
+    fs.renameSync(databaseDir, backupDir);
+    log(`[snapshot] Previous desktop database backed up to ${backupDir}`);
+  }
+  const upgradingState = {
+    generation,
+    status: "upgrading",
+    startedAt: new Date().toISOString(),
+    backupDir,
+  };
+  fs.writeFileSync(statePath, `${JSON.stringify(upgradingState, null, 2)}\n`);
+  return { generation, statePath, manifest, backupDir };
 }
 
 function waitForBackend(url, child) {
@@ -85,6 +125,8 @@ async function startLocalServices() {
     .update(`${app.getPath("userData")}:4head-local-db`)
     .digest("hex");
   const databaseDir = path.join(app.getPath("userData"), "postgres-data");
+  const backendDir = path.join(process.resourcesPath, "backend");
+  pendingSnapshotState = prepareSnapshotUpgrade(databaseDir, backendDir);
 
   database = new EmbeddedPostgres({
     databaseDir,
@@ -92,6 +134,7 @@ async function startLocalServices() {
     password: databasePassword,
     port: databasePort,
     persistent: true,
+    initdbFlags: ["--encoding=UTF8", "--locale=C"],
     postgresFlags: ["-h", "127.0.0.1"],
     onLog: (message) => log(`[postgres] ${message}`),
     onError: (error) => log(`[postgres:error] ${String(error)}`),
@@ -112,7 +155,6 @@ async function startLocalServices() {
     if (!String(error).toLowerCase().includes("already exists")) throw error;
   }
 
-  const backendDir = path.join(process.resourcesPath, "backend");
   const entry = path.join(backendDir, "dist", "src", "main.js");
   const jwtSecret = crypto
     .createHash("sha512")
@@ -154,6 +196,21 @@ async function startLocalServices() {
 
   const url = `http://127.0.0.1:${applicationPort}`;
   await waitForBackend(url, backend);
+  if (pendingSnapshotState) {
+    fs.writeFileSync(
+      pendingSnapshotState.statePath,
+      `${JSON.stringify({
+        generation: pendingSnapshotState.generation,
+        status: "complete",
+        importedAt: new Date().toISOString(),
+        records: pendingSnapshotState.manifest.records,
+        users: pendingSnapshotState.manifest.users,
+        parties: pendingSnapshotState.manifest.parties,
+        backupDir: pendingSnapshotState.backupDir || null,
+      }, null, 2)}\n`,
+    );
+    log(`[snapshot] Generation ${pendingSnapshotState.generation} imported successfully`);
+  }
   return url;
 }
 

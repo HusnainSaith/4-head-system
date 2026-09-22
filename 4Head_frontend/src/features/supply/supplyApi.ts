@@ -10,6 +10,7 @@ import type {
   ProfitLossReport,
   SettleTransferRequest,
   StockBalance,
+  StockWriteoff,
   SupplyPurchase,
   SupplySale,
   TransferListQuery,
@@ -160,6 +161,18 @@ export const supplyApi = apiSlice.injectEndpoints({
         { type: "Expense", id: "LIST" },
       ],
     }),
+    listSupplyStockWriteoffs: builder.query<ApiResponse<StockWriteoff[]>, void>({
+      query: () => "/supply/stock/writeoffs",
+      providesTags: [{ type: "SupplyStock" as const, id: "WRITEOFFS" }],
+    }),
+    updateSupplyStockWriteoff: builder.mutation<ApiResponse<StockWriteoff>, { id: string; body: StockWriteoffInput }>({
+      query: ({ id, body }) => ({ url: `/supply/stock/writeoffs/${id}`, method: "PATCH", body }),
+      invalidatesTags: [{ type: "SupplyStock", id: "CURRENT" }, { type: "SupplyStock", id: "WRITEOFFS" }, { type: "SupplyReport", id: "PROFIT_LOSS" }, { type: "Expense", id: "LIST" }],
+    }),
+    deleteSupplyStockWriteoff: builder.mutation<ApiResponse<void>, string>({
+      query: (id) => ({ url: `/supply/stock/writeoffs/${id}`, method: "DELETE" }),
+      invalidatesTags: [{ type: "SupplyStock", id: "CURRENT" }, { type: "SupplyStock", id: "WRITEOFFS" }, { type: "SupplyReport", id: "PROFIT_LOSS" }, { type: "Expense", id: "LIST" }],
+    }),
     listInternalTransfers: builder.query<
       PaginatedResponse<InternalTransfer>,
       TransferListQuery | void
@@ -229,6 +242,9 @@ export const {
   useDeleteSupplySaleMutation,
   useGetSupplyStockQuery,
   useCreateSupplyStockWriteoffMutation,
+  useListSupplyStockWriteoffsQuery,
+  useUpdateSupplyStockWriteoffMutation,
+  useDeleteSupplyStockWriteoffMutation,
   useListInternalTransfersQuery,
   useCreateInternalTransferMutation,
   useSettleInternalTransferMutation,

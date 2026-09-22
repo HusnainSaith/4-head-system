@@ -104,6 +104,7 @@ describe("shopApi contracts", () => {
   it("posts writeoff with correct body shape (no departmentId — backend resolves it)", async () => {
     const body = {
       quantityKg: 2,
+      ratePerKg: 300,
       reason: "spoilage" as const,
       writeoffDate: "2026-07-12",
       stockType: "live" as const,

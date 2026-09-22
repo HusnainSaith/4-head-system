@@ -1,6 +1,6 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { toast } from "sonner";
-import { Plus } from "lucide-react";
+import { Plus, Handshake } from "lucide-react";
 import { useSelector } from "react-redux";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
 import { EmptyState } from "@/components/common/EmptyState";
@@ -28,11 +28,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getApiErrorMessage } from "@/lib/api-error";
 import { selectUserRole } from "@/features/auth/authSlice";
+import { getApiErrorMessage } from "@/lib/api-error";
 import { useListPartiesQuery } from "@/features/parties/partiesApi";
 import { PartyType } from "@/features/parties/types";
 import { DepartmentBalancesPanel } from "@/features/parties/components/DepartmentBalancesPanel";
+import { PartySettlementDialog } from "@/features/parties/components/PartySettlementDialog";
 import { DepartmentVehicleSelect } from "@/features/vehicles/components/DepartmentVehicleSelect";
 import { InvoiceButton } from "@/features/invoices/components/InvoiceButton";
 import { DepartmentCode, Role } from "@/types/enums";
@@ -45,6 +46,8 @@ import {
   useDeleteBrokerageSaleMutation,
   useListBrokeragePurchasesQuery,
   useListBrokerageSalesQuery,
+  useUpdateBrokeragePurchaseMutation,
+  useUpdateBrokerageSaleMutation,
 } from "../brokerageApi";
 import type {
   BrokeragePurchase,
@@ -59,6 +62,7 @@ const money = new Intl.NumberFormat("en-PK", {
 type Kind = "purchase" | "sale";
 
 export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
+  const [filterDate, setFilterDate] = useState<string>("");
   const purchases = useListBrokeragePurchasesQuery(undefined, {
     skip: kind !== "purchase",
   });
@@ -72,19 +76,59 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
     role === Role.ACCOUNTANT ||
     role === Role.DEPARTMENT_STAFF;
   const canInvoice = role === Role.OWNER || role === Role.ACCOUNTANT;
+  const canEdit = role === Role.OWNER || role === Role.ACCOUNTANT;
   const [open, setOpen] = useState(false);
+  const [editingRecord, setEditingRecord] = useState<
+    (BrokeragePurchase | BrokerageSale) | null
+  >(null);
   const [pendingDelete, setPendingDelete] = useState<
     BrokeragePurchase | BrokerageSale | null
   >(null);
+  const [showSettlement, setShowSettlement] = useState(false);
   const [createPurchase, purchaseState] = useCreateBrokeragePurchaseMutation();
   const [createSale, saleState] = useCreateBrokerageSaleMutation();
+  const [updatePurchase] = useUpdateBrokeragePurchaseMutation();
+  const [updateSale] = useUpdateBrokerageSaleMutation();
   const [deletePurchase, deletePurchaseState = { isLoading: false }] =
     useDeleteBrokeragePurchaseMutation();
   const [deleteSale, deleteSaleState = { isLoading: false }] =
     useDeleteBrokerageSaleMutation();
-  const records = (query.data?.data?.items ?? []) as Array<
+
+  const allRecords = (query.data?.data?.items ?? []) as Array<
     BrokeragePurchase | BrokerageSale
   >;
+
+  const filteredRecords = filterDate
+    ? allRecords.filter((r) => {
+        const recordDate =
+          kind === "purchase"
+            ? (r as BrokeragePurchase).purchaseDate
+            : (r as BrokerageSale).saleDate;
+        return recordDate === filterDate;
+      })
+    : allRecords;
+
+  // Calculate totals for filtered date
+  const filteredTotals = {
+    totalAmount: filteredRecords.reduce(
+      (sum, r) => sum + Number(r.totalAmount),
+      0
+    ),
+    settled:
+      kind === "purchase"
+        ? filteredRecords.reduce(
+            (sum, r) => sum + Number((r as BrokeragePurchase).amountPaid),
+            0
+          )
+        : filteredRecords.reduce(
+            (sum, r) => sum + Number((r as BrokerageSale).amountReceived),
+            0
+          ),
+    outstanding: filteredRecords.reduce(
+      (sum, r) => sum + Number(r.outstandingAmount),
+      0
+    ),
+  };
 
   const columns: DataTableColumn<BrokeragePurchase | BrokerageSale>[] = [
     {
@@ -107,7 +151,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
     },
     {
       id: "quantity",
-      header: "Quantity",
+      header: "Weight",
       cell: (row) => `${row.quantityKg} kg`,
       align: "right",
     },
@@ -162,7 +206,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
           ? (row as BrokeragePurchase).purchaseDate
           : (row as BrokerageSale).saleDate,
     },
-    ...(canWrite || canInvoice
+    ...(canWrite || canInvoice || canEdit
       ? [
           {
             id: "actions",
@@ -175,6 +219,18 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
                     sourceId={row.id}
                     label="Print"
                   />
+                ) : null}
+                {canEdit ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingRecord(row);
+                      setOpen(true);
+                    }}
+                  >
+                    Edit
+                  </Button>
                 ) : null}
                 {canWrite ? (
                   <Button
@@ -211,62 +267,184 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
         title={`Brokerage ${kind === "purchase" ? "Purchases" : "Sales"}`}
         actions={
           canWrite ? (
-            <Button onClick={() => setOpen(true)}>
-              <Plus />
-              Record {kind}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setShowSettlement(true)}
+              >
+                <Handshake className="h-4 w-4" />
+                Settle Payment
+              </Button>
+              <Button
+                onClick={() => {
+                  setEditingRecord(null);
+                  setOpen(true);
+                }}
+              >
+                <Plus />
+                Record {kind}
+              </Button>
+            </div>
           ) : undefined
         }
       />
       <DepartmentBalancesPanel departmentCode={DepartmentCode.BROKERAGE} />
+
+      {/* Date Filter */}
+      <div className="mb-4 flex gap-2">
+        <Input
+          type="date"
+          value={filterDate}
+          onChange={(e) => setFilterDate(e.target.value)}
+          placeholder="Filter by date"
+          className="w-48"
+        />
+        {filterDate && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setFilterDate("")}
+          >
+            Clear filter
+          </Button>
+        )}
+      </div>
+
+      {/* Filtered Totals Display */}
+      {filterDate && (
+        <div className="mb-4 grid grid-cols-3 gap-4">
+          <div className="rounded-lg border bg-blue-50 p-4">
+            <div className="text-sm font-medium text-gray-600">TOTAL {kind === "purchase" ? "PAYABLE" : "RECEIVABLE"}</div>
+            <div className="mt-2 text-2xl font-bold">
+              {money.format(filteredTotals.totalAmount)}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">
+              {kind === "purchase"
+                ? "Department owes parties"
+                : "Department receives from parties"}
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-green-50 p-4">
+            <div className="text-sm font-medium text-gray-600">
+              {kind === "purchase" ? "PAID" : "RECEIVED"}
+            </div>
+            <div className="mt-2 text-2xl font-bold">
+              {money.format(filteredTotals.settled)}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">
+              {kind === "purchase"
+                ? "Amount paid to parties"
+                : "Amount received from parties"}
+            </div>
+          </div>
+
+          <div className="rounded-lg border bg-orange-50 p-4">
+            <div className="text-sm font-medium text-gray-600">OUTSTANDING</div>
+            <div className="mt-2 text-2xl font-bold">
+              {money.format(filteredTotals.outstanding)}
+            </div>
+            <div className="mt-1 text-xs text-gray-500">
+              {kind === "purchase"
+                ? "Still owe parties"
+                : "Still to receive from parties"}
+            </div>
+          </div>
+        </div>
+      )}
+
       <DataTable
         columns={columns}
-        data={records}
+        data={filteredRecords}
         getRowId={(row) => row.id}
         emptyContent={<EmptyState title={`No ${kind}s recorded`} />}
       />
+
       <TransactionDialog
         kind={kind}
         open={open}
+        editingRecord={editingRecord}
         loading={purchaseState.isLoading || saleState.isLoading}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          setEditingRecord(null);
+        }}
         onSubmit={async (values) => {
           try {
-            if (kind === "purchase") {
-              await createPurchase({
-                partyId: values.partyId || undefined,
-                quantityKg: values.quantityKg,
-                ratePerKg: values.ratePerKg,
-                amountPaid: values.paymentAmount,
-                paymentMethod: values.paymentMethod,
-                ...values.accountSelection,
-                purchaseDate: values.date,
-                vehicleId: values.vehicleId || undefined,
-                description: values.description || undefined,
-              }).unwrap();
+            if (editingRecord) {
+              // Edit mode
+              if (kind === "purchase") {
+                await updatePurchase({
+                  id: editingRecord.id,
+                  body: {
+                    partyId: values.partyId || undefined,
+                    quantityKg: values.quantityKg,
+                    ratePerKg: values.ratePerKg,
+                    amountPaid: values.paymentAmount,
+                    paymentMethod: values.paymentMethod,
+                    purchaseDate: values.date,
+                    vehicleId: values.vehicleId || undefined,
+                    description: values.description || undefined,
+                  },
+                }).unwrap();
+              } else {
+                await updateSale({
+                  id: editingRecord.id,
+                  body: {
+                    partyId: values.partyId || undefined,
+                    quantityKg: values.quantityKg,
+                    ratePerKg: values.ratePerKg,
+                    amountReceived: values.paymentAmount,
+                    paymentMethod: values.paymentMethod,
+                    saleDate: values.date,
+                    vehicleId: values.vehicleId || undefined,
+                    description: values.description || undefined,
+                  },
+                }).unwrap();
+              }
+              toast.success(
+                `${kind === "purchase" ? "Purchase" : "Sale"} updated`,
+              );
             } else {
-              await createSale({
-                partyId: values.partyId || undefined,
-                quantityKg: values.quantityKg,
-                ratePerKg: values.ratePerKg,
-                amountReceived: values.paymentAmount,
-                paymentMethod: values.paymentMethod,
-                ...values.accountSelection,
-                saleDate: values.date,
-                vehicleId: values.vehicleId || undefined,
-                description: values.description || undefined,
-                destinationType: values.destinationType,
-              }).unwrap();
+              // Create mode
+              if (kind === "purchase") {
+                await createPurchase({
+                  partyId: values.partyId || undefined,
+                  quantityKg: values.quantityKg,
+                  ratePerKg: values.ratePerKg,
+                  amountPaid: values.paymentAmount,
+                  paymentMethod: values.paymentMethod,
+                  ...values.accountSelection,
+                  purchaseDate: values.date,
+                  vehicleId: values.vehicleId || undefined,
+                  description: values.description || undefined,
+                }).unwrap();
+              } else {
+                await createSale({
+                  partyId: values.partyId || undefined,
+                  quantityKg: values.quantityKg,
+                  ratePerKg: values.ratePerKg,
+                  amountReceived: values.paymentAmount,
+                  paymentMethod: values.paymentMethod,
+                  ...values.accountSelection,
+                  saleDate: values.date,
+                  vehicleId: values.vehicleId || undefined,
+                  description: values.description || undefined,
+                  destinationType: values.destinationType,
+                }).unwrap();
+              }
+              toast.success(
+                `${kind === "purchase" ? "Purchase" : "Sale"} recorded`,
+              );
             }
-            toast.success(
-              `${kind === "purchase" ? "Purchase" : "Sale"} recorded`,
-            );
             setOpen(false);
+            setEditingRecord(null);
           } catch (error) {
             toast.error(getApiErrorMessage(error));
           }
         }}
       />
+
       <ConfirmDialog
         open={Boolean(pendingDelete)}
         onOpenChange={(nextOpen) => !nextOpen && setPendingDelete(null)}
@@ -285,6 +463,12 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
             setPendingDelete(null);
           }).catch((error) => toast.error(getApiErrorMessage(error)));
         }}
+      />
+
+      <PartySettlementDialog
+        open={showSettlement}
+        onOpenChange={setShowSettlement}
+        departmentCode={DepartmentCode.BROKERAGE}
       />
     </PageContainer>
   );
@@ -306,30 +490,75 @@ type FormValues = {
 function TransactionDialog({
   kind,
   open,
+  editingRecord,
   loading,
   onClose,
   onSubmit,
 }: {
   kind: Kind;
   open: boolean;
+  editingRecord: (BrokeragePurchase | BrokerageSale) | null;
   loading: boolean;
   onClose: () => void;
   onSubmit: (values: FormValues) => Promise<void>;
 }) {
   const [partyId, setPartyId] = useState("");
-  const [destinationType, setDestinationType] = useState<
-    "external" | "supply"
-  >("external");
+  const [destinationType, setDestinationType] = useState<"external" | "supply">(
+    "external"
+  );
   const [quantity, setQuantity] = useState("");
   const [rate, setRate] = useState("");
   const [paymentMethod, setPaymentMethod] =
     useState<BrokeragePaymentMethod>("cash");
   const [paymentAmount, setPaymentAmount] = useState("");
-  const [accountSelection, setAccountSelection] = useState<PaymentAccountSelection>({});
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [accountSelection, setAccountSelection] =
+    useState<PaymentAccountSelection>({});
+  const [date, setDate] = useState("");
   const [description, setDescription] = useState("");
   const [vehicleId, setVehicleId] = useState("");
   const [formError, setFormError] = useState("");
+
+  // Update form when editingRecord changes
+  React.useEffect(() => {
+    if (editingRecord) {
+      setPartyId(editingRecord.partyId || "");
+      setQuantity(editingRecord.quantityKg.toString());
+      setRate(editingRecord.ratePerKg.toString());
+      setPaymentMethod(
+        (editingRecord.paymentMethod as BrokeragePaymentMethod) || "cash"
+      );
+      setDescription(editingRecord.description || "");
+      setVehicleId(editingRecord.vehicleId || "");
+
+      if (kind === "purchase") {
+        setPaymentAmount(
+          (editingRecord as BrokeragePurchase).amountPaid.toString()
+        );
+        setDate((editingRecord as BrokeragePurchase).purchaseDate);
+      } else {
+        setPaymentAmount(
+          (editingRecord as BrokerageSale).amountReceived.toString()
+        );
+        setDate((editingRecord as BrokerageSale).saleDate);
+        setDestinationType(
+          (editingRecord as BrokerageSale).destinationType || "external"
+        );
+      }
+    } else {
+      // Reset form for create mode
+      setPartyId("");
+      setDestinationType("external");
+      setQuantity("");
+      setRate("");
+      setPaymentMethod("cash");
+      setPaymentAmount("");
+      setAccountSelection({});
+      setDate(new Date().toISOString().split("T")[0]);
+      setDescription("");
+      setVehicleId("");
+    }
+    setFormError("");
+  }, [editingRecord, kind, open]);
 
   const primaryPartyType =
     kind === "purchase" ? PartyType.FARM : PartyType.CUSTOMER;
@@ -350,16 +579,6 @@ function TransactionDialog({
   );
 
   const handleClose = () => {
-    setPartyId("");
-    setDestinationType("external");
-    setQuantity("");
-    setRate("");
-    setPaymentMethod("cash");
-    setAccountSelection({});
-    setPaymentAmount("");
-    setDate(new Date().toISOString().slice(0, 10));
-    setDescription("");
-    setVehicleId("");
     setFormError("");
     onClose();
   };
@@ -370,7 +589,7 @@ function TransactionDialog({
     const q = Number(quantity);
     const r = Number(rate);
     if (!Number.isFinite(q) || q <= 0) {
-      setFormError("Quantity must be a positive number.");
+      setFormError("Weight must be a positive number.");
       return;
     }
     if (!Number.isFinite(r) || r <= 0) {
@@ -435,11 +654,15 @@ function TransactionDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Record {kind}</DialogTitle>
+          <DialogTitle>
+            {editingRecord ? "Edit" : "Record"} {kind}
+          </DialogTitle>
           <DialogDescription>
-            {kind === "purchase"
-              ? "Record a new brokerage purchase from a farm or broker."
-              : "Record a new brokerage sale to a customer or broker."}
+            {editingRecord
+              ? `Update this ${kind} record`
+              : kind === "purchase"
+                ? "Record a new brokerage purchase from a farm or broker."
+                : "Record a new brokerage sale to a customer or broker."}
           </DialogDescription>
         </DialogHeader>
         <form className="space-y-4" onSubmit={handleSubmit}>
@@ -484,33 +707,32 @@ function TransactionDialog({
           ) : null}
 
           {destinationType !== "supply" ? (
-          <div className="space-y-1.5">
-            <Label htmlFor={`${kind}-party`}>{partyLabel}</Label>
-            <Select
-              value={partyId || "none"}
-              onValueChange={(v) => setPartyId(v === "none" ? "" : v)}
-            >
-              <SelectTrigger id={`${kind}-party`}>
-                <SelectValue
-                  placeholder={`Select ${partyLabel.toLowerCase()}`}
-                />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— None —</SelectItem>
-                {parties.map((p) => (
-                  <SelectItem key={p.id} value={p.id}>
-                    {p.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+            <div className="space-y-1.5">
+              <Label htmlFor={`${kind}-party`}>{partyLabel}</Label>
+              <Select
+                value={partyId || "none"}
+                onValueChange={(v) => setPartyId(v === "none" ? "" : v)}
+              >
+                <SelectTrigger id={`${kind}-party`}>
+                  <SelectValue
+                    placeholder={`Select ${partyLabel.toLowerCase()}`}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">— None —</SelectItem>
+                  {parties.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           ) : null}
 
-          <>
           <div className="space-y-1.5">
             <Label htmlFor={`${kind}-quantity`}>
-              Quantity (kg) <span className="text-destructive">*</span>
+              Weight (kg) <span className="text-destructive">*</span>
             </Label>
             <Input
               id={`${kind}-quantity`}
@@ -538,16 +760,14 @@ function TransactionDialog({
             />
           </div>
 
-          </>
-
-          <>
           <div className="space-y-1.5">
             <Label>Payment method</Label>
             <Select
               value={paymentMethod}
-              onValueChange={(v) =>
-                (setPaymentMethod(v as BrokeragePaymentMethod), setAccountSelection({}))
-              }
+              onValueChange={(v) => {
+                setPaymentMethod(v as BrokeragePaymentMethod);
+                setAccountSelection({});
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -559,7 +779,11 @@ function TransactionDialog({
               </SelectContent>
             </Select>
           </div>
-          <PaymentAccountFields paymentMethod={paymentMethod} value={accountSelection} onChange={setAccountSelection} />
+          <PaymentAccountFields
+            paymentMethod={paymentMethod}
+            value={accountSelection}
+            onChange={setAccountSelection}
+          />
 
           <div className="space-y-1.5">
             <Label htmlFor={`${kind}-payment-amount`}>
@@ -582,7 +806,6 @@ function TransactionDialog({
               balance is posted to the selected party.
             </p>
           </div>
-          </>
 
           <div className="space-y-1.5">
             <Label htmlFor={`${kind}-date`}>
@@ -621,7 +844,7 @@ function TransactionDialog({
               Cancel
             </Button>
             <Button type="submit" isLoading={loading}>
-              Save
+              {editingRecord ? "Update" : "Save"}
             </Button>
           </DialogFooter>
         </form>

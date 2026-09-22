@@ -60,16 +60,35 @@ export async function seedDepartments(dataSource: DataSource) {
       );
   }
 
-  const internalParties = savedDepartments.map((department) => ({
-    partyType: PartyTypeEnum.INTERNAL_DEPARTMENT,
-    name: `${department.name} Internal Department`,
-    linkedDepartmentId: department.id,
-    primaryDepartmentId: department.id,
-    openingBalance: '0',
-    notes: `Internal party for ${department.name}`,
-  }));
+  for (const department of savedDepartments) {
+    const internalPartyName = `${department.name} Internal Department`;
 
-  await partyRepo.upsert(internalParties, ['name']);
+    let internalParty = await partyRepo.findOne({
+      where: {
+        name: internalPartyName,
+        primaryDepartmentId: department.id,
+      },
+    });
+
+    if (!internalParty) {
+      internalParty = partyRepo.create({
+        partyType: PartyTypeEnum.INTERNAL_DEPARTMENT,
+        name: internalPartyName,
+        linkedDepartmentId: department.id,
+        primaryDepartmentId: department.id,
+        openingBalance: '0',
+        notes: `Internal party for ${department.name}`,
+      });
+    } else {
+      internalParty.partyType = PartyTypeEnum.INTERNAL_DEPARTMENT;
+      internalParty.linkedDepartmentId = department.id;
+      internalParty.primaryDepartmentId = department.id;
+      internalParty.openingBalance = '0';
+      internalParty.notes = `Internal party for ${department.name}`;
+    }
+
+    await partyRepo.save(internalParty);
+  }
 
   let product = await productRepo.findOneBy({ sku: 'LIVE-CHICKEN-KG' });
   if (!product) {

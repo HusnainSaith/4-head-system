@@ -6,6 +6,7 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { PageSkeleton } from "@/components/common/Skeletons";
 import { StatCard } from "@/components/common/StatCard";
 import { StockWriteoffDialog } from "@/components/common/StockWriteoffDialog";
+import { ShrinkageRecords } from "@/components/common/ShrinkageRecords";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,6 +18,9 @@ import { DepartmentCode, Role } from "@/types/enums";
 import {
   useCreateShopStockWriteoffMutation,
   useGetShopStockQuery,
+  useListShopStockWriteoffsQuery,
+  useUpdateShopStockWriteoffMutation,
+  useDeleteShopStockWriteoffMutation,
 } from "../shopApi";
 
 const money = new Intl.NumberFormat("en-PK", {
@@ -36,6 +40,9 @@ export function ShopStockPage() {
 
   const [open, setOpen] = useState(false);
   const [writeoff, state] = useCreateShopStockWriteoffMutation();
+  const records = useListShopStockWriteoffsQuery();
+  const [updateWriteoff] = useUpdateShopStockWriteoffMutation();
+  const [deleteWriteoff] = useDeleteShopStockWriteoffMutation();
 
   if (query.isLoading) return <PageSkeleton rows={2} />;
   if (query.isError || !query.data?.data)
@@ -62,9 +69,9 @@ export function ShopStockPage() {
         }
       />
       <div className="grid gap-4 sm:grid-cols-2">
-        <StatCard label="Live stock" value={`${live.quantityKg} kg`} />
+        <StatCard label="Live weight" value={`${live.quantityKg} kg`} />
         <StatCard label="Live WAC" value={money.format(Number(live.wac))} />
-        <StatCard label="Dressed stock" value={`${dressed.quantityKg} kg`} />
+        <StatCard label="Dressed weight" value={`${dressed.quantityKg} kg`} />
         <StatCard
           label="Dressed WAC"
           value={money.format(Number(dressed.wac))}
@@ -75,6 +82,7 @@ export function ShopStockPage() {
         Fresh Chicken Shop has no purchase-creation screen — see{" "}
         <strong>Incoming Transfers</strong> for the source records.
       </p>
+      <ShrinkageRecords records={records.data?.data ?? []} loading={records.isLoading} error={records.isError} retry={() => void records.refetch()} canWrite={canWrite} availableKg={live.quantityKg} stockOptions={[{ value: "live", label: "Live stock", availableKg: live.quantityKg }, { value: "dressed", label: "Dressed stock", availableKg: dressed.quantityKg }]} onUpdate={(id, body) => updateWriteoff({ id, body: { ...body, stockType: body.stockType! } }).unwrap()} onDelete={(id) => deleteWriteoff(id).unwrap()} />
       <StockWriteoffDialog
         open={open}
         availableKg={live.quantityKg}

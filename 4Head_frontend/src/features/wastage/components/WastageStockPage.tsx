@@ -6,12 +6,13 @@ import { PageHeader } from "@/components/common/PageHeader";
 import { PageSkeleton } from "@/components/common/Skeletons";
 import { StatCard } from "@/components/common/StatCard";
 import { StockWriteoffDialog } from "@/components/common/StockWriteoffDialog";
+import { ShrinkageRecords } from "@/components/common/ShrinkageRecords";
 import { PageContainer } from "@/components/layout/PageContainer";
 import { Button } from "@/components/ui/button";
 import { selectUserDepartmentCode, selectUserRole } from "@/features/auth/authSlice";
 import { getApiErrorMessage } from "@/lib/api-error";
 import { DepartmentCode, Role } from "@/types/enums";
-import { useCreateWastageStockWriteoffMutation, useGetStockQuery } from "../wastageApi";
+import { useCreateWastageStockWriteoffMutation, useGetStockQuery, useListWastageStockWriteoffsQuery, useUpdateWastageStockWriteoffMutation, useDeleteWastageStockWriteoffMutation } from "../wastageApi";
 
 const money = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR" });
 
@@ -23,8 +24,9 @@ export function WastageStockPage() {
     (role === Role.DEPARTMENT_STAFF && department === DepartmentCode.WASTAGE);
   const [open, setOpen] = useState(false);
   const [createWriteoff, writeoffState] = useCreateWastageStockWriteoffMutation();
+  const records = useListWastageStockWriteoffsQuery(); const [updateWriteoff] = useUpdateWastageStockWriteoffMutation(); const [deleteWriteoff] = useDeleteWastageStockWriteoffMutation();
   if (query.isLoading) return <PageSkeleton rows={2} />;
   if (query.isError || !query.data?.data) return <PageContainer><ErrorState title="Wastage stock could not be loaded" description={getApiErrorMessage(query.error)} onRetry={() => void query.refetch()} /></PageContainer>;
   const stock = query.data.data;
-  return <PageContainer><PageHeader title="Wastage Stock" description="Current stock balance and server-calculated weighted average cost." actions={canWrite ? <Button onClick={() => setOpen(true)}>+ Add Shrinkage</Button> : undefined} /><div className="grid gap-4 sm:grid-cols-2"><StatCard label="Quantity" value={`${stock.quantityKg} kg`} /><StatCard label="Weighted average cost" value={money.format(Number(stock.wac))} /></div><StockWriteoffDialog open={open} availableKg={stock.quantityKg} loading={writeoffState.isLoading} onClose={() => setOpen(false)} onSubmit={async (body) => { try { const result = await createWriteoff(body).unwrap(); toast.success(`Shrinkage recorded: ${money.format(Number(result.data.valuationAmount))}`); setOpen(false); } catch (error) { toast.error(getApiErrorMessage(error)); } }} /></PageContainer>;
+  return <PageContainer><PageHeader title="Wastage Stock" description="Current stock balance and server-calculated weighted average cost." actions={canWrite ? <Button onClick={() => setOpen(true)}>+ Add Shrinkage</Button> : undefined} /><div className="grid gap-4 sm:grid-cols-2"><StatCard label="Weight" value={`${stock.quantityKg} kg`} /><StatCard label="Weighted average cost" value={money.format(Number(stock.wac))} /></div><ShrinkageRecords records={records.data?.data ?? []} loading={records.isLoading} error={records.isError} retry={() => void records.refetch()} canWrite={canWrite} availableKg={stock.quantityKg} onUpdate={(id, body) => updateWriteoff({ id, body }).unwrap()} onDelete={(id) => deleteWriteoff(id).unwrap()} /><StockWriteoffDialog open={open} availableKg={stock.quantityKg} loading={writeoffState.isLoading} onClose={() => setOpen(false)} onSubmit={async (body) => { try { const result = await createWriteoff(body).unwrap(); toast.success(`Shrinkage recorded: ${money.format(Number(result.data.valuationAmount))}`); setOpen(false); } catch (error) { toast.error(getApiErrorMessage(error)); } }} /></PageContainer>;
 }

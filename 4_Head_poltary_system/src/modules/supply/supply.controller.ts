@@ -148,6 +148,22 @@ export class SupplyController {
     return this.supplyService.createStockWriteoff(dto, request.user.id);
   }
 
+  @Get('stock/writeoffs')
+  listWriteoffs() { return this.supplyService.listStockWriteoffs(); }
+
+  @Get('stock/writeoffs/:id')
+  getWriteoff(@Param('id') id: string) { return this.supplyService.getStockWriteoff(id); }
+
+  @Patch('stock/writeoffs/:id')
+  updateWriteoff(@Param('id') id: string, @Body() dto: Partial<StockWriteoffDto>, @Req() request: Request & { user: { id: string } }) {
+    return this.supplyService.updateStockWriteoff(id, dto, request.user.id);
+  }
+
+  @Delete('stock/writeoffs/:id')
+  deleteWriteoff(@Param('id') id: string, @Req() request: Request & { user: { id: string } }) {
+    return this.supplyService.deleteStockWriteoff(id, request.user.id);
+  }
+
   @Get('reports/profit-loss')
   @ApiQuery({ name: 'from', required: false })
   @ApiQuery({ name: 'to', required: false })

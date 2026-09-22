@@ -23,6 +23,8 @@ vi.mock("@/features/parties/partiesApi", () => ({
   useListPartiesQuery: vi.fn(),
   useCreatePartyMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
   useUpdatePartyMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
+  useAdjustPartyBalanceMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
+  useGetPartyQuery: vi.fn(() => ({ refetch: vi.fn() })),
   useDeletePartyMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
 }));
 vi.mock("@/features/vehicles/vehiclesApi", () => ({
@@ -171,6 +173,21 @@ describe("PartiesListPage", () => {
     renderPage();
     expect(screen.getByText("Alpha Farm")).toBeInTheDocument();
     expect(screen.getByText("Beta Broker")).toBeInTheDocument();
+  });
+
+  it("shows negative receivables in red and positive payables in normal text", () => {
+    mockUseListPartiesQuery().mockReturnValue({
+      data: paginatedResponse([
+        makeParty({ id: "receivable", name: "Receivable Shop", currentBalance: "-42256.00" }),
+        makeParty({ id: "payable", name: "Payable Shop", currentBalance: "69274.00" }),
+      ]),
+      isLoading: false,
+      isError: false,
+      refetch: vi.fn(),
+    } as ReturnType<typeof partiesApiModule.useListPartiesQuery>);
+    renderPage();
+    expect(screen.getByText(/-.*42,256/)).toHaveClass("text-red-600");
+    expect(screen.getByText(/\+.*69,274/)).toHaveClass("text-foreground");
   });
 
   it("sends name search to the server", async () => {

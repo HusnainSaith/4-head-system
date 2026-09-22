@@ -5,7 +5,11 @@ import { ExpensesPage } from "./ExpensesPage";
 vi.mock("@/features/accounts/components", () => ({
   PaymentAccountFields: () => null,
 }));
+vi.mock("@/features/invoices/components/InvoiceButton", () => ({
+  InvoiceButton: () => <button>Print</button>,
+}));
 const create = vi.fn(),
+  updateExpense = vi.fn(),
   update = vi.fn();
 let role: Role = Role.OWNER;
 vi.mock("react-redux", () => ({
@@ -20,11 +24,12 @@ vi.mock("@/features/vehicles/vehiclesApi", () => ({
 }));
 vi.mock("../expensesApi", () => ({
   useListExpensesQuery: () => ({
-    data: { data: [] },
+    data: { data: [{ id: "e1", departmentId: "d1", department: { id: "d1", name: "Brokerage" }, categoryId: "manual", category: { id: "manual", name: "Rent" }, amount: "800.00", expenseDate: "2026-08-22", paymentMethod: "cash", sourceType: "manual" }] },
     isLoading: false,
     isError: false,
   }),
   useCreateExpenseMutation: () => [create, { isLoading: false }],
+  useUpdateExpenseMutation: () => [updateExpense, { isLoading: false }],
   useUpdateExpenseCategoryMutation: () => [update],
   useListExpenseCategoriesQuery: () => ({
     data: {
@@ -48,7 +53,18 @@ vi.mock("../expensesApi", () => ({
 describe("ExpensesPage", () => {
   beforeEach(() => {
     create.mockReset();
+    updateExpense.mockReset();
     role = Role.OWNER;
+  });
+  it("edits a manual expense with its existing values", async () => {
+    updateExpense.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+    render(<MemoryRouter><ExpensesPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByRole("heading", { name: "Edit Manual Expense" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Amount")).toHaveValue(800);
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "900" } });
+    fireEvent.submit(screen.getByRole("button", { name: "Save" }).closest("form")!);
+    await waitFor(() => expect(updateExpense).toHaveBeenCalledWith(expect.objectContaining({ id: "e1", body: expect.objectContaining({ amount: "900.00" }) })));
   });
   it("does not offer edits for system categories", () => {
     render(

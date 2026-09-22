@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Input } from "@/components/ui/input";
 import {
   useGetBankAccountsQuery,
@@ -10,11 +11,13 @@ export function PaymentAccountFields({
   value,
   onChange,
   departmentId,
+  adminOnly = false,
 }: {
   paymentMethod: "cash" | "bank" | "credit";
   value: PaymentAccountSelection;
   onChange: (next: PaymentAccountSelection) => void;
   departmentId?: string;
+  adminOnly?: boolean;
 }) {
   const cash = useGetCashAccountsQuery(undefined, {
     skip: paymentMethod !== "cash",
@@ -22,12 +25,36 @@ export function PaymentAccountFields({
   const bank = useGetBankAccountsQuery(undefined, {
     skip: paymentMethod !== "bank",
   });
+  const allCashOptions = cash.data?.data ?? [];
+  const departmentCashOptions = allCashOptions.filter(
+    (item) =>
+      item.account.isShared ||
+      !departmentId ||
+      item.account.departmentId === departmentId,
+  );
+  const filteredCashOptions = adminOnly
+    ? departmentCashOptions.filter((item) =>
+        item.account.accountName.toLowerCase().includes("admin"),
+      )
+    : departmentCashOptions;
+  const cashOptions =
+    filteredCashOptions.length === 0 && allCashOptions.length === 1 && !adminOnly
+      ? allCashOptions
+      : filteredCashOptions;
+
+  useEffect(() => {
+    if (
+      paymentMethod === "cash" &&
+      cashOptions.length === 1 &&
+      !value.cashAccountId
+    ) {
+      onChange({ cashAccountId: cashOptions[0].account.id });
+    }
+  }, [cashOptions, onChange, paymentMethod, value.cashAccountId]);
+
   if (paymentMethod === "credit") return null;
   const selectClass = "h-9 w-full rounded-lg border bg-background px-3 text-sm";
   if (paymentMethod === "cash") {
-    const options = (cash.data?.data ?? []).filter(
-      (item) => !departmentId || item.account.departmentId === departmentId,
-    );
     return (
       <div className="space-y-1.5 text-sm">
         <label htmlFor="payment-cash-account">Cash drawer *</label>
@@ -41,7 +68,7 @@ export function PaymentAccountFields({
           }
         >
           <option value="">Select cash drawer</option>
-          {options.map((item) => (
+          {cashOptions.map((item) => (
             <option key={item.account.id} value={item.account.id}>
               {item.account.accountName} · Rs{" "}
               {Number(item.currentBalance).toLocaleString("en-PK")}

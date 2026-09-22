@@ -42,6 +42,7 @@ export type UpdateSaleRequest = Partial<CreateSaleRequest>;
 /** Mirrors StockWriteoff entity fields accepted by the shop writeoff handler */
 export interface StockWriteoffRequest {
   quantityKg: number;
+  ratePerKg: number;
   reason: "spoilage" | "mortality" | "transit_loss" | "other";
   note?: string;
   writeoffDate: string;
@@ -52,6 +53,7 @@ export interface StockWriteoffResponse {
   id: string;
   departmentId: string;
   quantityKg: string;
+  ratePerKg: string;
   reason: string;
   note: string | null;
   writeoffDate: string;
@@ -110,6 +112,9 @@ export interface ProfitLossReport {
   operatingExpenses: string;
   payrollExpenses: string;
   netProfit: string;
+  purchaseQuantityKg: string;
+  saleQuantityKg: string;
+  shrinkageKg: string;
 }
 
 export type SaleResponse = ApiResponse<ShopSale>;

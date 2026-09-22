@@ -11,7 +11,7 @@ import {
 } from './entities/brother-farm-adjustment.entity';
 
 describe('BrotherService', () => {
-  function setup(farmBalance = '-200000.00', brotherBalance = '20000.00') {
+  function setup(farmBalance = '200000.00', brotherBalance = '20000.00') {
     const account = {
       id: 'brother-account',
       partyId: 'brother-party',
@@ -98,8 +98,8 @@ describe('BrotherService', () => {
       BrotherFarmAdjustment,
       expect.objectContaining({
         transactionType: BrotherAdjustmentType.FARM_ADJUSTMENT,
-        farmBalanceBefore: '-200000.00',
-        farmBalanceAfter: '-150000.00',
+        farmBalanceBefore: '200000.00',
+        farmBalanceAfter: '150000.00',
         brotherBalanceBefore: '20000.00',
         brotherBalanceAfter: '70000.00',
       }),
@@ -122,7 +122,7 @@ describe('BrotherService', () => {
   });
 
   it('rejects an adjustment above the farm payable', async () => {
-    const { service, ledger } = setup('-30000.00');
+    const { service, ledger } = setup('30000.00');
     await expect(
       service.createAdjustment(
         {
@@ -137,7 +137,7 @@ describe('BrotherService', () => {
   });
 
   it('allows a partial payment without mixing the investor account', async () => {
-    const { service, ledger, manager } = setup('-200000.00', '70000.00');
+    const { service, ledger, manager } = setup('200000.00', '70000.00');
     const payment = await service.recordPayment(
       {
         departmentId: 'department-id',

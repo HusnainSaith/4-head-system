@@ -1,6 +1,12 @@
 export type BankMethod = "cheque" | "app";
 export type CashAdjustmentType = "deposit" | "withdraw";
 export interface CashAdjustmentRequest { type: CashAdjustmentType; amount: number; notes?: string; date?: string; }
+export interface BankAdjustmentRequest extends CashAdjustmentRequest {
+  cashAccountId?: string;
+  bankTransactionMethod: BankMethod;
+  chequeNumber?: string;
+  appReference?: string;
+}
 export interface PaymentAccountSelection { cashAccountId?: string; bankAccountId?: string; bankTransactionMethod?: BankMethod; chequeNumber?: string; appReference?: string; }
 
 export interface CashAccount { id: string; departmentId?: string; accountName: string; openingBalance: string; isShared?: boolean; department?: { name: string }; }

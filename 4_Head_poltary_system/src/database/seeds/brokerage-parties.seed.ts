@@ -96,7 +96,7 @@ async function postOpeningBalance(
   const ledgerRepo = dataSource.getRepository(LedgerEntry);
   const [account] = await dataSource.query(
     `SELECT id FROM chart_of_accounts WHERE code = $1 LIMIT 1`,
-    [amount > 0 ? 'accounts_receivable' : 'accounts_payable'],
+    [amount > 0 ? 'accounts_payable' : 'accounts_receivable'],
   );
   if (!account) throw new Error('Account not found for opening balance');
   const absAmount = Math.abs(amount).toFixed(2);
@@ -106,7 +106,7 @@ async function postOpeningBalance(
       departmentId,
       accountId: account.id,
       partyId,
-      entryType: amount > 0 ? 'debit' : 'credit',
+      entryType: amount > 0 ? 'credit' : 'debit',
       amount: absAmount,
       entryDate: today,
       sourceType: 'opening_balance',
@@ -116,7 +116,7 @@ async function postOpeningBalance(
     ledgerRepo.create({
       departmentId,
       accountId: account.id,
-      entryType: amount > 0 ? 'credit' : 'debit',
+      entryType: amount > 0 ? 'debit' : 'credit',
       amount: absAmount,
       entryDate: today,
       sourceType: 'opening_balance',

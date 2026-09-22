@@ -52,17 +52,6 @@ export function DepartmentBalancesPanel({
     <section className="space-y-3" aria-label="Department party balances">
       <div className="grid gap-4 md:grid-cols-2">
         <StatCard
-          label="Total payable"
-          tone="danger"
-          value={
-            query.isLoading
-              ? "…"
-              : money.format(Number(data?.totalPayable ?? 0))
-          }
-          delta="Business owes parties"
-          trend={Number(data?.totalPayable ?? 0) > 0 ? "down" : "neutral"}
-        />
-        <StatCard
           label="Total receivable"
           tone="success"
           value={
@@ -70,8 +59,19 @@ export function DepartmentBalancesPanel({
               ? "…"
               : money.format(Number(data?.totalReceivable ?? 0))
           }
-          delta="Parties owe business"
+          delta="Department receives from parties"
           trend={Number(data?.totalReceivable ?? 0) > 0 ? "up" : "neutral"}
+        />
+        <StatCard
+          label="Total payable"
+          tone="danger"
+          value={
+            query.isLoading
+              ? "…"
+              : money.format(Number(data?.totalPayable ?? 0))
+          }
+          delta="Department owes parties"
+          trend={Number(data?.totalPayable ?? 0) > 0 ? "down" : "neutral"}
         />
       </div>
       {query.isError ? (
@@ -92,14 +92,14 @@ export function DepartmentBalancesPanel({
         <Button
           variant="outline"
           onClick={() => setDirection("paid")}
-          disabled={!data?.parties.some((party) => Number(party.balance) < 0)}
+          disabled={!data?.parties.length}
         >
           <ArrowUpFromLine /> Record payment
         </Button>
         <Button
           variant="outline"
           onClick={() => setDirection("received")}
-          disabled={!data?.parties.some((party) => Number(party.balance) > 0)}
+          disabled={!data?.parties.some((p) => Number(p.balance) !== 0)}
         >
           <ArrowDownToLine /> Record receipt
         </Button>
@@ -126,15 +126,11 @@ function DepartmentPaymentDialog({
   onClose: () => void;
 }) {
   const eligibleParties = useMemo(
-    () =>
-      parties.filter((party) =>
-        direction === "paid"
-          ? Number(party.balance) < 0
-          : Number(party.balance) > 0,
-      ),
-    [direction, parties],
+    () => parties,
+    [parties],
   );
   const [partyId, setPartyId] = useState("");
+  const [partySearch, setPartySearch] = useState("");
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">("cash");
   const [accountSelection, setAccountSelection] = useState<PaymentAccountSelection>({});
@@ -144,11 +140,24 @@ function DepartmentPaymentDialog({
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
   const [recordPayment, paymentState] = useRecordPartyPaymentMutation();
+  const visibleParties = useMemo(() => {
+    const normalizedSearch = partySearch.trim().toLowerCase();
+    if (!normalizedSearch) return eligibleParties;
+    return eligibleParties.filter((party) =>
+      party.partyName.toLowerCase().includes(normalizedSearch),
+    );
+  }, [eligibleParties, partySearch]);
   const selected = eligibleParties.find((party) => party.partyId === partyId);
   const available = Math.abs(Number(selected?.balance ?? 0));
+  const isAdvancePayment =
+    direction === "paid" && Number(selected?.balance ?? 0) <= 0;
+  const isReceiptBalanceHint =
+    direction === "received" && Number(amount) > 0 &&
+    (Number(selected?.balance ?? 0) > 0 || Number(amount) > available);
 
   const resetAndClose = () => {
     setPartyId("");
+    setPartySearch("");
     setAmount("");
     setError("");
     setPaymentMethod("cash");
@@ -167,7 +176,7 @@ function DepartmentPaymentDialog({
       setError("Enter a positive amount.");
       return;
     }
-    if (value > available) {
+    if (direction === "paid" && !isAdvancePayment && value > available) {
       setError("Amount cannot exceed the outstanding party balance.");
       return;
     }
@@ -218,18 +227,33 @@ function DepartmentPaymentDialog({
             </Alert>
           ) : null}
           <div className="space-y-1.5">
+            <Label htmlFor="department-party-search">Search party</Label>
+            <Input
+              id="department-party-search"
+              value={partySearch}
+              onChange={(event) => setPartySearch(event.target.value)}
+              placeholder="Search by party name"
+            />
+          </div>
+          <div className="space-y-1.5">
             <Label>Party</Label>
             <Select value={partyId} onValueChange={setPartyId}>
               <SelectTrigger>
                 <SelectValue placeholder="Select party" />
               </SelectTrigger>
               <SelectContent>
-                {eligibleParties.map((party) => (
-                  <SelectItem key={party.partyId} value={party.partyId}>
-                    {party.partyName} —{" "}
-                    {money.format(Math.abs(Number(party.balance)))}
-                  </SelectItem>
-                ))}
+                {visibleParties.length ? (
+                  visibleParties.map((party) => (
+                    <SelectItem key={party.partyId} value={party.partyId}>
+                      {party.partyName} — {Number(party.balance) >= 0 ? "+" : "-"}
+                      {money.format(Math.abs(Number(party.balance)))}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    No matching parties
+                  </div>
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -239,14 +263,28 @@ function DepartmentPaymentDialog({
               id="department-payment-amount"
               type="number"
               min="0.01"
-              max={available || undefined}
+              max={direction === "paid" && !isAdvancePayment && available ? available : undefined}
               step="0.01"
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
             />
             {selected ? (
               <p className="text-xs text-muted-foreground">
-                Outstanding: {money.format(available)}
+                Current balance: {Number(selected.balance) >= 0 ? "+" : "-"}
+                {money.format(available)}
+              </p>
+            ) : null}
+            {isAdvancePayment ? (
+              <p className="text-xs text-amber-700">
+                This is an additional payment/advance. Cash or bank decreases and
+                the party's receivable balance increases.
+              </p>
+            ) : null}
+            {isReceiptBalanceHint ? (
+              <p className="text-xs text-amber-700">
+                {Number(selected?.balance ?? 0) > 0
+                  ? `The payable balance will increase from ${money.format(available)} to ${money.format(available + Number(amount))} after this receipt.`
+                  : `The full ${money.format(Number(amount))} will be added as advance credit to the party's account.`}
               </p>
             ) : null}
           </div>
@@ -267,7 +305,7 @@ function DepartmentPaymentDialog({
               </SelectContent>
             </Select>
           </div>
-          <PaymentAccountFields paymentMethod={paymentMethod} value={accountSelection} onChange={setAccountSelection} departmentId={departmentId} />
+          <PaymentAccountFields paymentMethod={paymentMethod} value={accountSelection} onChange={setAccountSelection} departmentId={departmentId} adminOnly />
           <div className="space-y-1.5">
             <Label htmlFor="department-payment-date">Date</Label>
             <Input

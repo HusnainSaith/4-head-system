@@ -56,8 +56,8 @@ export class CreatePartyDto {
 
   /**
    * Carried-in balance at go-live.
-   * Positive = party owes the business (receivable/asset).
-   * Negative = business owes the party (payable/liability).
+   * Positive = business owes the party (payable/liability).
+   * Negative = party owes the business (receivable/asset).
    * Defaults to 0 when omitted.
    */
   @IsOptional()

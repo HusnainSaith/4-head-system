@@ -151,6 +151,20 @@ describe("report pages", () => {
     });
   });
 
+  it("passes an exact single-day range to the query", () => {
+    show(<ConsolidatedPnLPage />);
+    fireEvent.change(screen.getByLabelText("From"), {
+      target: { value: "2026-07-02" },
+    });
+    fireEvent.change(screen.getByLabelText("To"), {
+      target: { value: "2026-07-02" },
+    });
+    expect(hooks.consolidated).toHaveBeenLastCalledWith({
+      startDate: "2026-07-02",
+      endDate: "2026-07-02",
+    });
+  });
+
   it("renders exactly three partner shares", () => {
     show(<PartnerProfitSharePage />);
     expect(screen.getAllByText(/13,667/)).toHaveLength(3);
@@ -159,7 +173,7 @@ describe("report pages", () => {
   it("renders outstanding balance", () => {
     show(<OutstandingBalancesPage />);
     expect(screen.getByText("Farm")).toBeInTheDocument();
-    expect(screen.getByText(/receivable/)).toBeInTheDocument();
+    expect(screen.getByText(/payable/)).toBeInTheDocument();
   });
 
   it("renders stock summary and movements", () => {

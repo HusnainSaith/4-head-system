@@ -35,11 +35,11 @@ export function OutstandingBalancesPage() {
       cell: (r) => (
         <span
           className={
-            Number(r.balance) >= 0 ? "text-emerald-600" : "text-red-600"
+            Number(r.balance) < 0 ? "text-emerald-600" : "text-red-600"
           }
         >
           {money.format(Math.abs(Number(r.balance)))}{" "}
-          {Number(r.balance) >= 0 ? "receivable" : "payable"}
+          {Number(r.balance) < 0 ? "receivable" : "payable"}
         </span>
       ),
     },

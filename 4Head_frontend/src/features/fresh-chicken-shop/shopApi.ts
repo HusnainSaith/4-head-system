@@ -10,6 +10,7 @@ import type {
   StockWriteoffRequest,
   UpdateSaleRequest,
   WriteoffResponse,
+  StockWriteoffResponse,
   DressingBatch,
   CreateDressingBatchRequest,
   ProcessingYield,
@@ -97,6 +98,9 @@ export const shopApi = apiSlice.injectEndpoints({
       query: (body) => ({ url: "/shop/stock/writeoffs", method: "POST", body }),
       invalidatesTags: writeoffRefresh,
     }),
+    listShopStockWriteoffs: builder.query<ApiResponse<StockWriteoffResponse[]>, void>({ query: () => "/shop/stock/writeoffs", providesTags: [{ type: "FreshChickenStock", id: "WRITEOFFS" }] }),
+    updateShopStockWriteoff: builder.mutation<ApiResponse<StockWriteoffResponse>, { id: string; body: StockWriteoffRequest }>({ query: ({ id, body }) => ({ url: `/shop/stock/writeoffs/${id}`, method: "PATCH", body }), invalidatesTags: [...writeoffRefresh, { type: "FreshChickenStock", id: "WRITEOFFS" }] }),
+    deleteShopStockWriteoff: builder.mutation<ApiResponse<void>, string>({ query: (id) => ({ url: `/shop/stock/writeoffs/${id}`, method: "DELETE" }), invalidatesTags: [...writeoffRefresh, { type: "FreshChickenStock", id: "WRITEOFFS" }] }),
     listDressingBatches: builder.query<
       ApiResponse<DressingBatch[]>,
       { from?: string; to?: string } | void
@@ -179,6 +183,9 @@ export const {
   useDeleteShopSaleMutation,
   useGetShopStockQuery,
   useCreateShopStockWriteoffMutation,
+  useListShopStockWriteoffsQuery,
+  useUpdateShopStockWriteoffMutation,
+  useDeleteShopStockWriteoffMutation,
   useGetShopProfitLossQuery,
   useListDressingBatchesQuery,
   useCreateDressingBatchMutation,

@@ -327,6 +327,10 @@ export class FreshChickenShopService implements OnModuleInit {
       );
     return saved;
   }
+  listStockWriteoffs() { return this.inventoryService.listWriteoffs(this.shopDeptId); }
+  getStockWriteoff(id: string) { return this.inventoryService.getWriteoff(id, this.shopDeptId); }
+  updateStockWriteoff(id: string, dto: any, actorId: string) { return this.dataSource.transaction((manager) => this.inventoryService.updateWriteoff(id, this.shopDeptId, dto, actorId, manager)); }
+  async deleteStockWriteoff(id: string, actorId: string) { await this.dataSource.transaction((manager) => this.inventoryService.deleteWriteoff(id, this.shopDeptId, actorId, manager)); return { success: true }; }
 
   listDressingBatches(query: DressingBatchQueryDto) {
     return this.shopRepository.findBatches(
@@ -459,37 +463,37 @@ export class FreshChickenShopService implements OnModuleInit {
   }
 
   async getProfitLoss(from?: string, to?: string) {
-    const startDate = from ? new Date(from) : new Date('1970-01-01');
-    const endDate = to ? new Date(to) : new Date();
+    const fromDate = from ?? '1970-01-01';
+    const toDate = to ?? new Date().toISOString().slice(0, 10);
 
     const [revenue, cogs, operatingExpenses, payrollExpenses] =
       await Promise.all([
         this.ledgerService.sumByAccount(
           this.shopDeptId,
           'revenue',
-          startDate,
-          endDate,
+          fromDate,
+          toDate,
           'credit',
         ),
         this.ledgerService.sumByAccount(
           this.shopDeptId,
           'cogs',
-          startDate,
-          endDate,
+          fromDate,
+          toDate,
           'debit',
         ),
         this.ledgerService.sumByAccount(
           this.shopDeptId,
           'operating_expense',
-          startDate,
-          endDate,
+          fromDate,
+          toDate,
           'debit',
         ),
         this.ledgerService.sumByAccount(
           this.shopDeptId,
           'payroll_expense',
-          startDate,
-          endDate,
+          fromDate,
+          toDate,
           'debit',
         ),
       ]);
@@ -500,7 +504,12 @@ export class FreshChickenShopService implements OnModuleInit {
       parseFloat(operatingExpenses) -
       parseFloat(payrollExpenses)
     ).toFixed(2);
+    const [purchaseQuantityKg, saleQuantityKg, shrinkageKg] = await Promise.all([
+      this.shopRepository.sumActiveIncomingQuantity(this.shopDeptId, from, to),
+      this.shopRepository.sumActiveSaleQuantity(from, to),
+      this.inventoryService.sumWriteoffQuantity(this.shopDeptId, fromDate, toDate),
+    ]);
 
-    return { revenue, cogs, operatingExpenses, payrollExpenses, netProfit };
+    return { revenue, cogs, operatingExpenses, payrollExpenses, netProfit, purchaseQuantityKg, saleQuantityKg, shrinkageKg };
   }
 }

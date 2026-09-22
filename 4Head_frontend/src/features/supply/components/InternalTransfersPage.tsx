@@ -77,7 +77,7 @@ export function InternalTransfersPage() {
     },
     {
       id: "quantity",
-      header: "Quantity",
+      header: "Weight",
       cell: (r) => `${r.quantityKg} kg`,
       align: "right",
     },
@@ -269,7 +269,7 @@ function TransferDialog({
           }}
         >
           <div>
-            <Label htmlFor="transfer-quantity">Quantity (kg)</Label>
+            <Label htmlFor="transfer-quantity">Weight (kg)</Label>
             <Input
               id="transfer-quantity"
               type="number"

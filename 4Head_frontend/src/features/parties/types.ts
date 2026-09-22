@@ -43,7 +43,7 @@ export interface Party {
   updatedBy: string | null;
 }
 
-/** Exact CreatePartyDto fields. openingBalance: positive = party owes business; negative = business owes party. */
+/** Exact CreatePartyDto fields. openingBalance: positive = payable; negative = receivable. */
 export interface CreatePartyRequest {
   userId?: string;
   partyType: PartyType;
@@ -54,7 +54,7 @@ export interface CreatePartyRequest {
   primaryDepartmentId?: string;
   departmentIds: string[];
   notes?: string;
-  /** Positive = party owes the business (receivable). Negative = business owes the party (payable). */
+  /** Positive = business owes the party (payable). Negative = party owes the business (receivable). */
   openingBalance?: number;
 }
 
@@ -88,7 +88,8 @@ export type LedgerSourceType =
   | "brother_adjustment"
   | "investor_capital"
   | "investor_profit"
-  | "zakat_fund";
+  | "zakat_fund"
+  | "party_adjustment";
 
 export interface PartyStatementEntry {
   id: string;
@@ -101,6 +102,9 @@ export interface PartyStatementEntry {
   sourceType: LedgerSourceType;
   sourceId: string;
   description: string | null;
+  quantityKg?: string;
+  ratePerKg?: string;
+  totalAmount?: string;
   createdAt: string;
   createdBy: string | null;
   runningBalance: string;
@@ -125,7 +129,7 @@ export interface DepartmentPartyBalance {
   partyId: string;
   partyName: string;
   partyType: string;
-  /** Positive means receivable; negative means payable. */
+  /** Positive means payable; negative means receivable. */
   balance: string;
 }
 
@@ -144,6 +148,48 @@ export interface RecordPaymentResponseData {
   paymentMethod: string;
   direction: "received" | "paid";
   notes?: string;
+}
+
+/** Party Settlement Request DTO */
+export interface CreatePartySettlementRequest {
+  payablePartyId: string;
+  receivablePartyId: string;
+  settlementAmount: number;
+  departmentId: string;
+  settlementDate?: string;
+  reference?: string;
+  notes?: string;
+}
+
+export interface UpdatePartySettlementRequest {
+  settlementAmount?: number;
+  settlementDate?: string;
+  reference?: string;
+  notes?: string;
+}
+
+/** Party Settlement Entity */
+export interface PartySettlement {
+  id: string;
+  payablePartyId: string;
+  payableParty: Party;
+  receivablePartyId: string;
+  receivableParty: Party;
+  departmentId: string;
+  department?: { id: string; name: string };
+  settlementAmount: string;
+  settlementDate: string;
+  reference?: string;
+  notes?: string;
+  status: "active" | "reversed";
+  reversedAt?: string;
+  reversedBy?: string;
+  reversalReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt?: string;
+  createdBy?: string;
+  updatedBy?: string;
 }
 
 /** Pagination metadata returned by the backend. */
@@ -182,3 +228,5 @@ export type DeletePartyResponse = ApiResponse<Party | null>;
 export type PartiesResponse = ApiResponse<PaginatedPartyData>;
 export type PartyStatementResponse = ApiResponse<PartyStatement>;
 export type RecordPaymentResponse = ApiResponse<RecordPaymentResponseData>;
+export type PartySettlementResponse = ApiResponse<PartySettlement>;
+export type PartySettlementHistoryResponse = ApiResponse<PartySettlement[]>;

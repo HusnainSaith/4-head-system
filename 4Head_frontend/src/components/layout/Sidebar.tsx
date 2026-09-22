@@ -99,6 +99,11 @@ const navigation = [
   },
   { label: "Parties", to: "/parties", icon: UsersRound },
   {
+    label: "Settlements",
+    to: "/parties/settlements",
+    icon: HandCoins,
+  },
+  {
     label: "Vehicles",
     to: "/vehicles",
     icon: Truck,

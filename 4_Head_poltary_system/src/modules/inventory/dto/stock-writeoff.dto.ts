@@ -12,6 +12,7 @@ import { StockType } from '../enums/stock-type.enum';
 export class StockWriteoffDto {
   @IsOptional() @IsUUID() departmentId?: string;
   @IsNumber() @IsPositive() quantityKg: number;
+  @IsNumber() @IsPositive() ratePerKg: number;
   @IsEnum(['spoilage', 'mortality', 'transit_loss', 'other']) reason: string;
   @IsOptional() @IsString() note?: string;
   @IsDateString() writeoffDate: string;

@@ -139,6 +139,7 @@ export type StockWriteoffReason =
 export interface StockWriteoffRequest {
   departmentId?: string;
   quantityKg: number;
+  ratePerKg: number;
   reason: StockWriteoffReason;
   note?: string;
   writeoffDate: string;
@@ -148,6 +149,7 @@ export interface StockWriteoffResponse {
   id: string;
   departmentId: string;
   quantityKg: string;
+  ratePerKg: string;
   reason: StockWriteoffReason;
   note: string | null;
   writeoffDate: string;
@@ -160,6 +162,9 @@ export interface BrokerageProfitLoss {
   operatingExpenses: string;
   payrollExpenses: string;
   netProfit: string;
+  purchaseQuantityKg: string;
+  saleQuantityKg: string;
+  shrinkageKg: string;
 }
 
 export interface ProfitLossParams {

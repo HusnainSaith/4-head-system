@@ -171,6 +171,9 @@ export const brokerageApi = apiSlice.injectEndpoints({
         { type: "Expense", id: "LIST" },
       ],
     }),
+    listBrokerageStockWriteoffs: builder.query<ApiResponse<StockWriteoffResponse[]>, void>({ query: () => "/brokerage/stock/writeoffs", providesTags: [{ type: "BrokerageStock", id: "WRITEOFFS" }] }),
+    updateBrokerageStockWriteoff: builder.mutation<ApiResponse<StockWriteoffResponse>, { id: string; body: StockWriteoffRequest }>({ query: ({ id, body }) => ({ url: `/brokerage/stock/writeoffs/${id}`, method: "PATCH", body }), invalidatesTags: [...refreshTransactionState, { type: "BrokerageStock", id: "WRITEOFFS" }, { type: "Expense", id: "LIST" }] }),
+    deleteBrokerageStockWriteoff: builder.mutation<ApiResponse<void>, string>({ query: (id) => ({ url: `/brokerage/stock/writeoffs/${id}`, method: "DELETE" }), invalidatesTags: [...refreshTransactionState, { type: "BrokerageStock", id: "WRITEOFFS" }, { type: "Expense", id: "LIST" }] }),
     getBrokerageProfitLoss: builder.query<
       ApiResponse<BrokerageProfitLoss>,
       ProfitLossParams | void
@@ -199,5 +202,8 @@ export const {
   useDeleteBrokerageSaleMutation,
   useGetBrokerageStockQuery,
   useCreateBrokerageStockWriteoffMutation,
+  useListBrokerageStockWriteoffsQuery,
+  useUpdateBrokerageStockWriteoffMutation,
+  useDeleteBrokerageStockWriteoffMutation,
   useGetBrokerageProfitLossQuery,
 } = brokerageApi;

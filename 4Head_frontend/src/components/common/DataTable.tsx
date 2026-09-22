@@ -60,6 +60,8 @@ export interface DataTableProps<T> {
   onRetry?: () => void;
   /** Empty-state node shown when data is empty (not loading). */
   emptyContent?: React.ReactNode;
+  /** Optional table footer rendered after the data rows. */
+  footerContent?: React.ReactNode;
   /** Optional pagination footer (controlled by caller). */
   pagination?: DataTablePagination;
   onPageChange?: (page: number) => void;
@@ -91,6 +93,7 @@ export function DataTable<T>({
   errorMessage,
   onRetry,
   emptyContent,
+  footerContent,
   pagination,
   onPageChange,
   onRowClick,
@@ -222,6 +225,7 @@ export function DataTable<T>({
               ))
             )}
           </TableBody>
+          {footerContent ? <tfoot>{footerContent}</tfoot> : null}
         </Table>
       </div>
 

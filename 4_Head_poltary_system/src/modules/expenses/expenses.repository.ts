@@ -36,6 +36,22 @@ export class ExpensesRepository implements IExpensesRepository {
     return this.expenseRepo.findOne({ where: { id, deletedAt: null } as any });
   }
 
+  async sumTotal(
+    departmentId: string,
+    from?: string,
+    to?: string,
+  ): Promise<string> {
+    const query = this.expenseRepo
+      .createQueryBuilder('e')
+      .select('COALESCE(SUM(e.amount), 0)', 'sum')
+      .where('e.deleted_at IS NULL')
+      .andWhere('e.department_id = :departmentId', { departmentId });
+    if (from) query.andWhere('e.expense_date >= :from', { from });
+    if (to) query.andWhere('e.expense_date <= :to', { to });
+    const result = await query.getRawOne<{ sum: string }>();
+    return Number(result?.sum ?? 0).toFixed(2);
+  }
+
   async findCategoryByName(name: string): Promise<ExpenseCategory> {
     return this.categoryRepo.findOneOrFail({ where: { name } });
   }

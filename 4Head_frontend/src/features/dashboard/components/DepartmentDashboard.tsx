@@ -77,11 +77,11 @@ export function DepartmentDashboard() {
     0,
   );
   const totalReceivable = balanceRows.reduce(
-    (sum, item) => sum + Math.max(Number(item.balance || 0), 0),
+    (sum, item) => sum + Math.max(-Number(item.balance || 0), 0),
     0,
   );
   const totalPayable = balanceRows.reduce(
-    (sum, item) => sum + Math.max(-Number(item.balance || 0), 0),
+    (sum, item) => sum + Math.max(Number(item.balance || 0), 0),
     0,
   );
 

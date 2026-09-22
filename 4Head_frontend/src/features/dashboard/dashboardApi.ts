@@ -25,8 +25,12 @@ export interface DepartmentProfitLoss {
   departmentName: string;
   departmentType: "BROKERAGE" | "SUPPLY" | "WASTAGE" | "FRESH_CHICKEN_SHOP";
   revenue: string;
+  otherIncome: string;
   cogs: string;
   grossProfit: string;
+  operatingExpenses: string;
+  payrollExpenses: string;
+  netProfit: string;
 }
 
 export interface PartnerProfitShare extends ConsolidatedProfitLoss {

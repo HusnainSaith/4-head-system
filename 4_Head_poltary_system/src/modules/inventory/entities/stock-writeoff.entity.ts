@@ -32,6 +32,9 @@ export class StockWriteoff extends AuditBaseEntity {
   @Column({ type: 'decimal', precision: 12, scale: 3, name: 'quantity_kg' })
   quantityKg: string;
 
+  @Column({ name: 'rate_per_kg', type: 'decimal', precision: 14, scale: 2 })
+  ratePerKg: string;
+
   @Column({
     type: 'enum',
     enum: ['spoilage', 'mortality', 'transit_loss', 'other'],

@@ -78,6 +78,7 @@ export class AuthService {
   async validateUser(email: string, password: string): Promise<User> {
     const user = await this.usersService.findByEmail(email, {
       includePassword: true,
+      relations: ['role', 'department'],
     });
     if (user?.isActive && (await bcrypt.compare(password, user.passwordHash))) {
       return user;
@@ -95,6 +96,7 @@ export class AuthService {
       dto.email.toLowerCase().trim(),
       {
         includePassword: true,
+        relations: ['role', 'department'],
       },
     );
     if (!user || !user.isActive) {
@@ -291,7 +293,9 @@ export class AuthService {
   }
 
   async getCurrentUserByEmail(email: string): Promise<any> {
-    const user = await this.usersService.findByEmail(email);
+    const user = await this.usersService.findByEmail(email, {
+      relations: ['role', 'department'],
+    });
     if (!user) {
       throw new NotFoundException('User not found');
     }

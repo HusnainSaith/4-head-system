@@ -9,6 +9,7 @@ import { PageContainer } from "@/components/layout/PageContainer";
 import { useGetAccountsSummaryQuery } from "../accountsApi";
 import { AddBankAccountModal } from "./AddBankAccountModal";
 import { CashAdjustmentModal } from "./CashAdjustmentModal";
+import { BankAdjustmentModal } from "./BankAdjustmentModal";
 import type { CashAdjustmentType } from "../types";
 
 const money = new Intl.NumberFormat("en-PK", { style: "currency", currency: "PKR", minimumFractionDigits: 2 });
@@ -20,10 +21,17 @@ interface AdjustState {
   type: CashAdjustmentType;
 }
 
+interface BankAdjustState {
+  bankAccountId: string;
+  accountName: string;
+  type: CashAdjustmentType;
+}
+
 export function CashBankDashboardPage() {
   const navigate = useNavigate();
   const [adding, setAdding] = useState(false);
   const [adjusting, setAdjusting] = useState<AdjustState | null>(null);
+  const [bankAdjusting, setBankAdjusting] = useState<BankAdjustState | null>(null);
   const query = useGetAccountsSummaryQuery();
 
   if (query.isLoading) return <PageSkeleton rows={6} />;
@@ -167,6 +175,36 @@ export function CashBankDashboardPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-emerald-500 text-emerald-700"
+                    onClick={() =>
+                      setBankAdjusting({
+                        bankAccountId: item.account.id,
+                        accountName: `${item.account.bankName} · ${item.account.accountTitle}`,
+                        type: "deposit",
+                      })
+                    }
+                  >
+                    <ArrowDownCircle className="mr-1 h-4 w-4" />
+                    Deposit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-red-400 text-red-600"
+                    onClick={() =>
+                      setBankAdjusting({
+                        bankAccountId: item.account.id,
+                        accountName: `${item.account.bankName} · ${item.account.accountTitle}`,
+                        type: "withdraw",
+                      })
+                    }
+                  >
+                    <ArrowUpCircle className="mr-1 h-4 w-4" />
+                    Withdraw
+                  </Button>
                   <Button size="sm" onClick={() => navigate(`/accounts/bank/${item.account.id}/statement`)}>
                     Full statement
                   </Button>
@@ -192,6 +230,15 @@ export function CashBankDashboardPage() {
           cashAccountId={adjusting.cashAccountId}
           drawerName={adjusting.drawerName}
           type={adjusting.type}
+        />
+      )}
+      {bankAdjusting && (
+        <BankAdjustmentModal
+          open
+          onClose={() => setBankAdjusting(null)}
+          bankAccountId={bankAdjusting.bankAccountId}
+          accountName={bankAdjusting.accountName}
+          type={bankAdjusting.type}
         />
       )}
     </PageContainer>

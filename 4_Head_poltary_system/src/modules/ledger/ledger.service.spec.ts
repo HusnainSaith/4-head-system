@@ -4,6 +4,7 @@ import { LedgerService } from './ledger.service';
 describe('LedgerService department party balances', () => {
   const repository = {
     getDepartmentPartyBalances: jest.fn(),
+    findByParty: jest.fn(),
     findAccountByCode: jest.fn(),
     saveEntries: jest.fn(),
   } as unknown as jest.Mocked<LedgerRepository>;
@@ -43,19 +44,19 @@ describe('LedgerService department party balances', () => {
         partyId: 'buyer-1',
         partyName: 'Buyer One',
         partyType: 'buyer',
-        balance: '350.25',
+        balance: '-350.25',
       },
       {
         partyId: 'farm-1',
         partyName: 'Farm One',
         partyType: 'farm',
-        balance: '-600.50',
+        balance: '600.50',
       },
       {
         partyId: 'buyer-2',
         partyName: 'Buyer Two',
         partyType: 'buyer',
-        balance: '49.75',
+        balance: '-49.75',
       },
     ]);
 
@@ -66,9 +67,9 @@ describe('LedgerService department party balances', () => {
       totalReceivable: '400.00',
       totalPayable: '600.50',
       parties: [
-        expect.objectContaining({ partyId: 'buyer-1', balance: '350.25' }),
-        expect.objectContaining({ partyId: 'farm-1', balance: '-600.50' }),
-        expect.objectContaining({ partyId: 'buyer-2', balance: '49.75' }),
+        expect.objectContaining({ partyId: 'buyer-1', balance: '-350.25' }),
+        expect.objectContaining({ partyId: 'farm-1', balance: '600.50' }),
+        expect.objectContaining({ partyId: 'buyer-2', balance: '-49.75' }),
       ],
     });
   });
@@ -84,5 +85,30 @@ describe('LedgerService department party balances', () => {
       totalPayable: '0.00',
       parties: [],
     });
+  });
+
+  it('uses the same credit-positive and debit-negative convention for opening balances', async () => {
+    repository.findByParty.mockResolvedValue([
+      {
+        id: 'opening-entry',
+        sourceType: 'opening_balance',
+        entryType: 'debit',
+        amount: '34034155.00',
+      },
+      {
+        id: 'payment-entry',
+        sourceType: 'payment',
+        entryType: 'debit',
+        amount: '55533.00',
+      },
+    ] as never);
+
+    const statement = await service.getPartyStatement('shafique-party');
+
+    expect(statement.entries.map((entry) => entry.runningBalance)).toEqual([
+      '-34034155.00',
+      '-34089688.00',
+    ]);
+    expect(statement.closingBalance).toBe('-34089688.00');
   });
 });

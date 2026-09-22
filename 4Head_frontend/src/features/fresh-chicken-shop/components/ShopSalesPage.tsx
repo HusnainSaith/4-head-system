@@ -60,7 +60,7 @@ const money = new Intl.NumberFormat("en-PK", {
 });
 
 const shopSaleSchema = z.object({
-  quantityKg: z.number().positive("Quantity must be greater than zero."),
+  quantityKg: z.number().positive("Weight must be greater than zero."),
   ratePerKg: z.number().positive("Sale rate must be greater than zero."),
 });
 
@@ -82,7 +82,7 @@ const columns: DataTableColumn<ShopSale>[] = [
   },
   {
     id: "quantity",
-    header: "Dressed quantity",
+    header: "Dressed weight",
     cell: (r) => `${r.quantityKg} kg`,
     align: "right",
   },
@@ -347,7 +347,7 @@ function SaleDialog({
     });
     if (!parsed.success) {
       setFormError(
-        parsed.error.issues[0]?.message ?? "Check the sale quantity.",
+        parsed.error.issues[0]?.message ?? "Check the sale weight.",
       );
       return;
     }
@@ -465,7 +465,7 @@ function SaleDialog({
 
           <div className="space-y-1.5">
             <Label htmlFor="sale-live-weight">
-              Dressed quantity sold (kg) *
+              Dressed weight sold (kg) *
             </Label>
             <Input
               id="sale-live-weight"
@@ -618,7 +618,7 @@ function ProfitPreview({
           <strong className="text-foreground">{money.format(cogs)}</strong>
         </span>
         <span>
-          Quantity
+          Weight
           <br />
           <strong className="text-foreground">
             {quantityKg.toFixed(3)} kg

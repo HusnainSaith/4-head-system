@@ -14,6 +14,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
+import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { CreateExpenseCategoryDto } from './dto/create-expense-category.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -70,5 +71,13 @@ export class ExpensesController {
   @ApiOperation({ summary: 'Get expense by id' })
   async findOne(@Param('id') id: string) {
     return this.svc.findOne(id);
+  }
+
+  @Patch(':id')
+  @ApiOperation({ summary: 'Update a manual expense' })
+  async update(@Param('id') id: string, @Body() dto: UpdateExpenseDto, @Req() req: Request) {
+    const user = (req as any).user;
+    if (user.role?.name === RoleEnum.DEPARTMENT_STAFF) dto.departmentId = user.departmentId;
+    return this.svc.update(id, dto, user.id);
   }
 }

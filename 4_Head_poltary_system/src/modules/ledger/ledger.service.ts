@@ -75,14 +75,29 @@ export class LedgerService {
     let balanceCents = 0;
     const withBalance = entries.map((e) => {
       const amountCents = this.toCents(e.amount);
-      balanceCents += e.entryType === 'debit' ? amountCents : -amountCents;
-      return { ...e, runningBalance: this.fromCents(balanceCents) };
+      const balanceSign = e.entryType === 'credit' ? 1 : -1;
+      balanceCents += balanceSign * amountCents;
+      return {
+        ...e,
+        runningBalance: this.fromCents(balanceCents),
+        quantityKg: e.quantityKg,
+        ratePerKg: e.ratePerKg,
+        totalAmount: e.totalAmount,
+      };
     });
 
     return {
       entries: withBalance,
       closingBalance: this.fromCents(balanceCents),
     };
+  }
+
+  findBySource(
+    sourceType: LedgerEntry['sourceType'],
+    sourceId: string,
+    manager?: EntityManager,
+  ) {
+    return this.ledgerRepo.findBySource(sourceType, sourceId, manager);
   }
 
   async getPartyBalances(
@@ -99,8 +114,8 @@ export class LedgerService {
     let payableCents = 0;
     for (const party of parties) {
       const cents = this.toCents(Number(party.balance).toFixed(2));
-      if (cents > 0) receivableCents += cents;
-      if (cents < 0) payableCents += Math.abs(cents);
+      if (cents < 0) receivableCents += Math.abs(cents);
+      if (cents > 0) payableCents += cents;
     }
     return {
       departmentId,
@@ -141,7 +156,7 @@ export class LedgerService {
             ? ('credit' as const)
             : ('debit' as const),
         amount: entry.amount,
-        entryDate: new Date(),
+        entryDate: new Date(entry.entryDate),
         sourceType,
         sourceId,
         description: 'Cancellation reversal',
@@ -159,8 +174,8 @@ export class LedgerService {
   async sumByAccount(
     departmentId: string,
     accountCode: string,
-    from: Date,
-    to: Date,
+    from: string,
+    to: string,
     entryType: 'debit' | 'credit',
     excludedSourceType?: LedgerEntry['sourceType'],
   ): Promise<string> {

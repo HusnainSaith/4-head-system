@@ -72,6 +72,9 @@ export interface ProfitLossReport {
   operatingExpenses: string;
   payrollExpenses: string;
   netProfit: string;
+  purchaseQuantityKg: string;
+  saleQuantityKg: string;
+  shrinkageKg: string;
 }
 
 export interface ProfitLossParams {

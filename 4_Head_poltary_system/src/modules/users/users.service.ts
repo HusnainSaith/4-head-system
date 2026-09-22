@@ -121,13 +121,14 @@ export class UsersService {
 
   async findByEmail(
     email: string,
-    options?: { includePassword?: boolean },
+    options?: { includePassword?: boolean; relations?: string[] },
   ): Promise<User | UserWithPassword | null> {
     try {
+      const relations = options?.relations ?? ['role', 'department'];
       const user = await this.usersRepository.findByEmail(
         email.toLowerCase().trim(),
         options?.includePassword,
-        ['role', 'department'],
+        relations,
       );
       return user as UserWithPassword;
     } catch (error) {

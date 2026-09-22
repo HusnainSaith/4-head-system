@@ -595,9 +595,9 @@ export class BrokerageService implements OnModuleInit {
 
   async createStockWriteoff(dto: Partial<any>, createdBy: string) {
     this.ensureBrokerageDepartment();
-    if (!dto.quantityKg || !dto.writeoffDate || !dto.reason) {
+    if (!dto.quantityKg || !dto.ratePerKg || !dto.writeoffDate || !dto.reason) {
       throw new BadRequestException(
-        'quantityKg, writeoffDate, and reason are required',
+        'quantityKg, ratePerKg, writeoffDate, and reason are required',
       );
     }
     const savedWriteoff = await this.dataSource.transaction((manager) =>
@@ -647,38 +647,38 @@ export class BrokerageService implements OnModuleInit {
       );
     return savedWriteoff;
   }
+  listStockWriteoffs() { this.ensureBrokerageDepartment(); return this.inventoryService.listWriteoffs(this.brokerageDepartmentId); }
+  getStockWriteoff(id: string) { this.ensureBrokerageDepartment(); return this.inventoryService.getWriteoff(id, this.brokerageDepartmentId); }
+  updateStockWriteoff(id: string, dto: any, actorId: string) { this.ensureBrokerageDepartment(); return this.dataSource.transaction((manager) => this.inventoryService.updateWriteoff(id, this.brokerageDepartmentId, dto, actorId, manager)); }
+  async deleteStockWriteoff(id: string, actorId: string) { this.ensureBrokerageDepartment(); await this.dataSource.transaction((manager) => this.inventoryService.deleteWriteoff(id, this.brokerageDepartmentId, actorId, manager)); return { success: true }; }
 
   async getProfitLoss(from?: string, to?: string) {
     this.ensureBrokerageDepartment();
-    const startDate = from ? new Date(from) : new Date('1970-01-01');
-    const endDate = to ? new Date(to) : new Date();
+    const fromDate = from ?? '1970-01-01';
+    const toDate = to ?? new Date().toISOString().slice(0, 10);
 
-    const revenue = await this.ledgerService.sumByAccount(
-      this.brokerageDepartmentId,
-      'revenue',
-      startDate,
-      endDate,
-      'credit',
-    );
-    const cogs = await this.ledgerService.sumByAccount(
-      this.brokerageDepartmentId,
-      'cogs',
-      startDate,
-      endDate,
-      'debit',
-    );
-    const operatingExpenses = await this.ledgerService.sumByAccount(
-      this.brokerageDepartmentId,
-      'operating_expense',
-      startDate,
-      endDate,
-      'debit',
-    );
+    // Transaction tables are authoritative for operational P&L. Historical
+    // ledgers may contain duplicated postings from imports or retries.
+    const revenue = await this.brokerageRepository.sumActiveSaleTotal(from, to);
+    const cogs = await this.brokerageRepository.sumActivePurchaseTotal(from, to);
+    const operatingExpenses = this.expensesService
+      ? await this.expensesService.sumTotal(
+          this.brokerageDepartmentId,
+          from,
+          to,
+        )
+      : await this.ledgerService.sumByAccount(
+          this.brokerageDepartmentId,
+          'operating_expense',
+          fromDate,
+          toDate,
+          'debit',
+        );
     const payrollExpenses = await this.ledgerService.sumByAccount(
       this.brokerageDepartmentId,
       'payroll_expense',
-      startDate,
-      endDate,
+      fromDate,
+      toDate,
       'debit',
     );
 
@@ -688,6 +688,11 @@ export class BrokerageService implements OnModuleInit {
       parseFloat(operatingExpenses) -
       parseFloat(payrollExpenses)
     ).toFixed(2);
+    const [purchaseQuantityKg, saleQuantityKg, shrinkageKg] = await Promise.all([
+      this.brokerageRepository.sumActivePurchaseQuantity(from, to),
+      this.brokerageRepository.sumActiveSaleQuantity(from, to),
+      this.inventoryService.sumWriteoffQuantity(this.brokerageDepartmentId, fromDate, toDate),
+    ]);
 
     return {
       revenue,
@@ -695,6 +700,9 @@ export class BrokerageService implements OnModuleInit {
       operatingExpenses,
       payrollExpenses,
       netProfit,
+      purchaseQuantityKg,
+      saleQuantityKg,
+      shrinkageKg,
     };
   }
 }

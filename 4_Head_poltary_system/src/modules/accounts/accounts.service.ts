@@ -6,6 +6,8 @@ import { UpdateBankAccountDto } from './dto/update-bank-account.dto';
 import { CashAdjustmentDto, CashAdjustmentType } from './dto/cash-adjustment.dto';
 import { BankAccount } from './entities/bank-account.entity';
 import { CashAccount } from './entities/cash-account.entity';
+import { BankAdjustmentDto } from './dto/bank-adjustment.dto';
+import { LedgerService } from '../ledger/ledger.service';
 
 type BalanceRow = {
   account_id: string;
@@ -22,6 +24,7 @@ export class AccountsService {
   constructor(
     private readonly accountsRepo: AccountsRepository,
     private readonly dataSource: DataSource,
+    private readonly ledger: LedgerService,
   ) {}
 
   async getCashAccountBalance(departmentId: string) {
@@ -206,6 +209,81 @@ export class AccountsService {
       ],
     );
     return this.getCashAccountById(account.id);
+  }
+
+  async adjustBankAccount(
+    bankAccountId: string,
+    dto: BankAdjustmentDto,
+    actorId: string,
+  ) {
+    const account = await this.accountsRepo.findBankById(bankAccountId);
+    const isDeposit = dto.type === CashAdjustmentType.DEPOSIT;
+    const cashAccount = isDeposit
+      ? await this.accountsRepo.findCashById(dto.cashAccountId!)
+      : undefined;
+    if (cashAccount) {
+      const cashBalance = await this.getCashAccountById(cashAccount.id);
+      if (dto.amount > Number(cashBalance.currentBalance)) {
+        throw new BadRequestException(
+          'Bank deposit cannot exceed the selected cash drawer balance',
+        );
+      }
+    }
+    if (!isDeposit) {
+      const balance = await this.getBankAccountBalance(account.id);
+      if (dto.amount > Number(balance.currentBalance)) {
+        throw new BadRequestException(
+          'Bank withdrawal cannot exceed the current account balance',
+        );
+      }
+    }
+    const [department] = (await this.dataSource.query(
+      `SELECT id FROM departments WHERE is_active = true ORDER BY created_at LIMIT 1`,
+    )) as Array<{ id: string }>;
+    if (!department)
+      throw new BadRequestException(
+        'An active department is required for bank adjustments',
+      );
+    const [identifier] = (await this.dataSource.query(
+      `SELECT gen_random_uuid() AS id`,
+    )) as Array<{ id: string }>;
+    const amount = this.money(dto.amount);
+    const entryDate = dto.date ? new Date(dto.date) : new Date();
+    const description =
+      dto.notes?.trim() ||
+      (isDeposit
+        ? `Cash transfer to ${account.bankName}`
+        : `Owner bank withdrawal - ${account.bankName}`);
+    await this.ledger.post([
+      {
+        departmentId: department.id,
+        accountCode: 'bank',
+        bankAccountId: account.id,
+        bankTransactionMethod: dto.bankTransactionMethod,
+        chequeNumber: dto.chequeNumber?.trim() || undefined,
+        appReference: dto.appReference?.trim() || undefined,
+        entryType: isDeposit ? 'debit' : 'credit',
+        amount,
+        entryDate,
+        sourceType: 'cash_adjustment',
+        sourceId: identifier.id,
+        description,
+        createdBy: actorId,
+      },
+      {
+        departmentId: department.id,
+        accountCode: isDeposit ? 'cash' : 'retained_earnings',
+        cashAccountId: cashAccount?.id,
+        entryType: isDeposit ? 'credit' : 'debit',
+        amount,
+        entryDate,
+        sourceType: 'cash_adjustment',
+        sourceId: identifier.id,
+        description,
+        createdBy: actorId,
+      },
+    ]);
+    return this.getBankAccountBalance(account.id);
   }
 
   async getCashAccountById(cashAccountId: string) {

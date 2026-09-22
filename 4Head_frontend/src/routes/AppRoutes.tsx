@@ -59,6 +59,11 @@ const PartyStatementPage = lazy(() =>
     default: module.PartyStatementPage,
   })),
 );
+const PartySettlementPage = lazy(() =>
+  import("@/features/parties/components/PartySettlementPage").then((module) => ({
+    default: module.PartySettlementPage,
+  })),
+);
 const BrokeragePurchasesPage = lazy(() =>
   import("@/features/brokerage/components/BrokeragePurchasesPage").then(
     (m) => ({ default: m.BrokeragePurchasesPage }),
@@ -520,6 +525,14 @@ export function AppRoutes() {
             element={
               <RoleGuard allowedRoles={partyRoles}>
                 <PartiesListPage />
+              </RoleGuard>
+            }
+          />
+          <Route
+            path="parties/settlements"
+            element={
+              <RoleGuard allowedRoles={partyRoles}>
+                <PartySettlementPage />
               </RoleGuard>
             }
           />

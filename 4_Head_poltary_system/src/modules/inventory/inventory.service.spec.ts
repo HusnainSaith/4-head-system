@@ -9,16 +9,22 @@ describe('InventoryService', () => {
     getBalance: jest.Mock;
     updateBalance: jest.Mock;
     saveMovement: jest.Mock;
+    saveWriteoff: jest.Mock;
+    findWriteoff: jest.Mock;
+    softDeleteWriteoff: jest.Mock;
   };
-  let expensesService: { createSystemExpense: jest.Mock };
+  let expensesService: { createSystemExpense: jest.Mock; reverseSystemExpenses: jest.Mock };
 
   beforeEach(async () => {
     inventoryRepository = {
       getBalance: jest.fn(),
       updateBalance: jest.fn(),
       saveMovement: jest.fn(),
+      saveWriteoff: jest.fn((value) => ({ id: 'writeoff-1', ...value })),
+      findWriteoff: jest.fn(),
+      softDeleteWriteoff: jest.fn(),
     };
-    expensesService = { createSystemExpense: jest.fn() };
+    expensesService = { createSystemExpense: jest.fn(), reverseSystemExpenses: jest.fn() };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         InventoryService,
@@ -38,6 +44,34 @@ describe('InventoryService', () => {
 
   it('should be defined', () => {
     expect(service).toBeDefined();
+  });
+
+  it('values shrinkage using the entered sale rate instead of WAC', async () => {
+    inventoryRepository.getBalance.mockResolvedValue({
+      quantityKg: '20.000',
+      wac: '100.0000',
+    });
+
+    const result = await service.createWriteoff(
+      {
+        departmentId: 'department-1',
+        quantityKg: 5,
+        ratePerKg: 300,
+        reason: 'spoilage',
+        writeoffDate: '2026-09-18',
+      },
+      'user-1',
+      {} as any,
+    );
+
+    expect(expensesService.createSystemExpense).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: '1500.00' }),
+      expect.anything(),
+    );
+    expect(result).toMatchObject({
+      ratePerKg: '300.00',
+      valuationAmount: '1500.00',
+    });
   });
 
   describe('recalculateWac', () => {
@@ -97,5 +131,44 @@ describe('InventoryService', () => {
       cogsAmount: 18450,
       processingLossAmount: 6150,
     });
+  });
+
+  it('deletes shrinkage by restoring stock and reversing its expense', async () => {
+    inventoryRepository.findWriteoff.mockResolvedValue({
+      id: 'writeoff-1',
+      departmentId: 'supply-dept',
+      quantityKg: '5.000',
+      valuationAmount: '500.00',
+      stockType: 'standard',
+    });
+    inventoryRepository.getBalance.mockResolvedValue({
+      quantityKg: '20.000',
+      wac: '100.0000',
+    });
+
+    await service.deleteWriteoff(
+      'writeoff-1',
+      'supply-dept',
+      'admin-1',
+      {} as any,
+    );
+
+    expect(inventoryRepository.updateBalance).toHaveBeenCalledWith(
+      'supply-dept',
+      '25.000',
+      '100.0000',
+      expect.anything(),
+    );
+    expect(expensesService.reverseSystemExpenses).toHaveBeenCalledWith(
+      'stock_writeoff',
+      'writeoff-1',
+      'admin-1',
+      expect.anything(),
+    );
+    expect(inventoryRepository.softDeleteWriteoff).toHaveBeenCalledWith(
+      'writeoff-1',
+      'admin-1',
+      expect.anything(),
+    );
   });
 });

@@ -119,17 +119,22 @@ export class ZakatFundsService {
         throw new BadRequestException((error as Error).message);
       }
       if (dto.paymentMethod === 'cash') {
-        const cashAccount = await manager.findOne(CashAccount, {
-          where: {
-            id: dto.cashAccountId,
-            departmentId: dto.departmentId,
-            isActive: true,
-            deletedAt: IsNull(),
-          },
-        });
+        const cashAccount = await manager
+          .getRepository(CashAccount)
+          .createQueryBuilder('cashAccount')
+          .where('cashAccount.id = :cashAccountId', {
+            cashAccountId: dto.cashAccountId,
+          })
+          .andWhere('cashAccount.isActive = true')
+          .andWhere('cashAccount.deletedAt IS NULL')
+          .andWhere(
+            '(cashAccount.isShared = true OR cashAccount.departmentId = :departmentId)',
+            { departmentId: dto.departmentId },
+          )
+          .getOne();
         if (!cashAccount)
           throw new BadRequestException(
-            'Select an active cash account for the same department',
+            'Select the shared cash drawer or an active drawer for the same department',
           );
       } else {
         const bankAccount = await manager.findOne(BankAccount, {

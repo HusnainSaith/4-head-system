@@ -8,6 +8,7 @@ import { seedChartOfAccounts } from './chart-of-accounts.seed';
 import { seedExpenseCategories } from './expense-categories.seed';
 import { seedSupplyWastageCustomers } from '../src/database/seeds/supply-wastage-customers.seed';
 import { seedBrokerageParties } from '../src/database/seeds/brokerage-parties.seed';
+import { seedWastageShopOwners } from '../src/database/seeds/wastage-shop-owners.seed';
 
 export async function seed() {
   await AppDataSource.initialize();
@@ -25,12 +26,14 @@ export async function seed() {
       { name: 'accountant', description: 'Financial read/write access' },
       { name: 'department_staff', description: 'Department-scoped access' },
       { name: 'employee', description: 'Employee self-service access' },
+      { name: 'SHOP_OWNER', description: 'Shop owner party' },
     ];
     await roleRepo.upsert(roleDefinitions, ['name']);
     const ownerRole = await roleRepo.findOne({ where: { name: 'owner' } });
 
     await seedSupplyWastageCustomers(AppDataSource);
     await seedBrokerageParties(AppDataSource);
+    await seedWastageShopOwners(AppDataSource);
 
     // Seed admin user — always ensure role_id points to owner
     const userRepo = AppDataSource.getRepository(User);

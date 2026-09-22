@@ -127,6 +127,9 @@ vi.mock("@/features/fresh-chicken-shop/shopApi", () => ({
     vi.fn().mockResolvedValue({ data: { valuationAmount: "580.00" } }),
     { isLoading: false },
   ]),
+  useListShopStockWriteoffsQuery: vi.fn(() => ({ data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() })),
+  useUpdateShopStockWriteoffMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
+  useDeleteShopStockWriteoffMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
   useGetShopProfitLossQuery: vi.fn(() => ({
     data: { data: mockReport },
     isLoading: false,
@@ -183,7 +186,7 @@ describe("ShopSalesPage", () => {
       unwrap: () => Promise.resolve({ data: mockSale }),
     });
   });
-  it("renders dressed quantity and backend-derived margin", () => {
+  it("renders dressed weight and backend-derived margin", () => {
     wrap(<ShopSalesPage />);
     expect(screen.getByText("Walk-in Customer")).toBeInTheDocument();
     expect(screen.getByText("5.000 kg")).toBeInTheDocument();
@@ -209,7 +212,7 @@ describe("ShopSalesPage", () => {
   it("shows insufficient-stock error when dressed quantity exceeds available", () => {
     wrap(<ShopSalesPage />);
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
-    const quantityInput = screen.getByLabelText(/dressed quantity/i);
+    const quantityInput = screen.getByLabelText(/dressed weight/i);
     fireEvent.change(quantityInput, { target: { value: "999" } });
     const rateInput = screen.getByLabelText(/sale rate per dressed kg/i);
     fireEvent.change(rateInput, { target: { value: "300" } });
@@ -227,7 +230,7 @@ describe("ShopSalesPage", () => {
   it("submits dressed-sale inputs and renders the backend-WAC preview", () => {
     wrap(<ShopSalesPage />);
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
-    fireEvent.change(screen.getByLabelText(/dressed quantity/i), {
+    fireEvent.change(screen.getByLabelText(/dressed weight/i), {
       target: { value: "30" },
     });
     fireEvent.change(screen.getByLabelText(/sale rate per dressed kg/i), {
@@ -261,7 +264,7 @@ describe("ShopStockPage", () => {
     wrap(<ShopStockPage />);
     fireEvent.click(screen.getByRole("button", { name: /add shrinkage/i }));
     expect(screen.getByRole("dialog")).toBeInTheDocument();
-    expect(screen.getByLabelText(/quantity \(kg\)/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/weight \(kg\)/i)).toBeInTheDocument();
   });
 
   it("write-off dialog has reason select with expected default", () => {

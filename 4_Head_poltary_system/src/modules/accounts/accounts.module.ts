@@ -5,9 +5,10 @@ import { AccountsRepository } from './accounts.repository';
 import { AccountsService } from './accounts.service';
 import { BankAccount } from './entities/bank-account.entity';
 import { CashAccount } from './entities/cash-account.entity';
+import { LedgerModule } from '../ledger/ledger.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([CashAccount, BankAccount])],
+  imports: [TypeOrmModule.forFeature([CashAccount, BankAccount]), LedgerModule],
   controllers: [AccountsController],
   providers: [AccountsRepository, AccountsService],
   exports: [AccountsService, AccountsRepository],

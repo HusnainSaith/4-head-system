@@ -35,6 +35,54 @@ export class BrokerageRepository {
     private readonly saleRepo: Repository<BrokerageSale>,
   ) {}
 
+  async sumActivePurchaseTotal(from?: string, to?: string): Promise<string> {
+    const query = this.purchaseRepo
+      .createQueryBuilder('bp')
+      .select('COALESCE(SUM(bp.total_amount), 0)', 'sum')
+      .where('bp.deleted_at IS NULL')
+      .andWhere('bp.status = :status', {
+        status: BrokeragePurchaseStatus.ACTIVE,
+      });
+    if (from) query.andWhere('bp.purchase_date >= :from', { from });
+    if (to) query.andWhere('bp.purchase_date <= :to', { to });
+    const result = await query.getRawOne<{ sum: string }>();
+    return Number(result?.sum ?? 0).toFixed(2);
+  }
+
+  async sumActiveSaleTotal(from?: string, to?: string): Promise<string> {
+    const query = this.saleRepo
+      .createQueryBuilder('bs')
+      .select('COALESCE(SUM(bs.total_amount), 0)', 'sum')
+      .where('bs.deleted_at IS NULL')
+      .andWhere('bs.status = :status', { status: BrokerageSaleStatus.ACTIVE });
+    if (from) query.andWhere('bs.sale_date >= :from', { from });
+    if (to) query.andWhere('bs.sale_date <= :to', { to });
+    const result = await query.getRawOne<{ sum: string }>();
+    return Number(result?.sum ?? 0).toFixed(2);
+  }
+
+  async sumActivePurchaseQuantity(from?: string, to?: string): Promise<string> {
+    const query = this.purchaseRepo.createQueryBuilder('bp')
+      .select('COALESCE(SUM(bp.quantityKg), 0)', 'total')
+      .where('bp.deleted_at IS NULL')
+      .andWhere('bp.status = :status', { status: BrokeragePurchaseStatus.ACTIVE });
+    if (from) query.andWhere('bp.purchase_date >= :from', { from });
+    if (to) query.andWhere('bp.purchase_date <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
+
+  async sumActiveSaleQuantity(from?: string, to?: string): Promise<string> {
+    const query = this.saleRepo.createQueryBuilder('bs')
+      .select('COALESCE(SUM(bs.quantityKg), 0)', 'total')
+      .where('bs.deleted_at IS NULL')
+      .andWhere('bs.status = :status', { status: BrokerageSaleStatus.ACTIVE });
+    if (from) query.andWhere('bs.sale_date >= :from', { from });
+    if (to) query.andWhere('bs.sale_date <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
+
   async findAllPurchasesPaginated(
     query: ListBrokeragePurchasesQueryDto,
   ): Promise<PaginatedResult<BrokeragePurchase>> {

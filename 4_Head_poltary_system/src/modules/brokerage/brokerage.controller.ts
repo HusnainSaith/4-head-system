@@ -111,6 +111,14 @@ export class BrokerageController {
   createStockWriteoff(@Request() req, @Body() dto: Partial<StockWriteoffDto>) {
     return this.brokerageService.createStockWriteoff(dto, req.user.id);
   }
+  @Get('stock/writeoffs')
+  listStockWriteoffs() { return this.brokerageService.listStockWriteoffs(); }
+  @Get('stock/writeoffs/:id')
+  getStockWriteoff(@Param('id') id: string) { return this.brokerageService.getStockWriteoff(id); }
+  @Patch('stock/writeoffs/:id')
+  updateStockWriteoff(@Param('id') id: string, @Body() dto: Partial<StockWriteoffDto>, @Request() req) { return this.brokerageService.updateStockWriteoff(id, dto, req.user.id); }
+  @Delete('stock/writeoffs/:id')
+  deleteStockWriteoff(@Param('id') id: string, @Request() req) { return this.brokerageService.deleteStockWriteoff(id, req.user.id); }
 
   @Get('reports/profit-loss')
   @ApiOperation({ summary: 'Get brokerage profit and loss report' })

@@ -20,7 +20,7 @@ export function StockSummaryPage() {
   });
   const summary: DataTableColumn<StockSummaryItem>[] = [
     { id: "department", header: "Department", cell: (r) => r.departmentName },
-    { id: "quantity", header: "Quantity (kg)", cell: (r) => r.quantityKg },
+    { id: "quantity", header: "Weight (kg)", cell: (r) => r.quantityKg },
     { id: "wac", header: "Weighted avg cost", cell: (r) => r.wac },
   ];
   const movements: DataTableColumn<StockMovementItem>[] = [
@@ -31,7 +31,7 @@ export function StockSummaryPage() {
     },
     { id: "department", header: "Department", cell: (r) => r.departmentName },
     { id: "type", header: "Movement", cell: (r) => r.movementType },
-    { id: "quantity", header: "Quantity (kg)", cell: (r) => r.quantityKg },
+    { id: "quantity", header: "Weight (kg)", cell: (r) => r.quantityKg },
     { id: "rate", header: "Rate/kg", cell: (r) => r.ratePerKg },
     { id: "wac", header: "Resulting WAC", cell: (r) => r.resultingWac },
   ];

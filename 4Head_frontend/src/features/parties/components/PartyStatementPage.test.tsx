@@ -17,10 +17,19 @@ import {
 
 // ── mock mutations / queries ───────────────────────────────────────────────
 const mockRecordPayment = vi.fn();
+const mockDeleteParty = vi.fn();
 
 vi.mock("@/features/parties/partiesApi", () => ({
   useGetPartyQuery: vi.fn(),
   useGetPartyStatementQuery: vi.fn(),
+  useDeletePartyMutation: vi.fn(() => [
+    mockDeleteParty,
+    { isLoading: false },
+  ]),
+  useUpdatePartyPaymentMutation: vi.fn(() => [
+    vi.fn(),
+    { isLoading: false },
+  ]),
   useRecordPartyPaymentMutation: vi.fn(() => [
     mockRecordPayment,
     { isLoading: false },
@@ -130,6 +139,7 @@ function setupSuccessfulQueries(
 describe("PartyStatementPage", () => {
   beforeEach(() => {
     mockRecordPayment.mockReset();
+    mockDeleteParty.mockReset();
   });
 
   it("renders the party name as the page title", () => {
@@ -138,17 +148,50 @@ describe("PartyStatementPage", () => {
     expect(screen.getByText("Test Farm")).toBeInTheDocument();
   });
 
+  it("shows edit and delete party actions", () => {
+    setupSuccessfulQueries();
+    renderPage();
+    expect(screen.getAllByRole("button", { name: /^edit$/i }).length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("button", { name: /^delete$/i }).length).toBeGreaterThan(0);
+  });
+
   it("shows receivable/payable totals and prints the statement", async () => {
-    const print = vi.spyOn(window, "print").mockImplementation(() => undefined);
+    const printWindow = {
+      document: {
+        open: vi.fn(),
+        write: vi.fn(),
+        close: vi.fn(),
+      },
+      addEventListener: vi.fn(),
+      focus: vi.fn(),
+      print: vi.fn(),
+    } as unknown as Window;
+    vi.spyOn(window, "open").mockReturnValue(printWindow);
     setupSuccessfulQueries();
     renderPage();
     expect(screen.getByText("Receivable from party")).toBeInTheDocument();
     expect(screen.getByText("Payable to party")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /print statement/i })).toBeDisabled();
+    await userEvent.type(screen.getByLabelText("From"), "2025-01-01");
+    await userEvent.type(screen.getByLabelText("To"), "2025-03-31");
     await userEvent.click(
       screen.getByRole("button", { name: /print statement/i }),
     );
-    expect(print).toHaveBeenCalled();
-    print.mockRestore();
+    expect(printWindow.document.write).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "<title>4Head ERP</title>",
+      ),
+    );
+    expect(printWindow.document.write).toHaveBeenCalledWith(
+      expect.stringContaining("<h1>Account History</h1>"),
+    );
+    expect(printWindow.document.write).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "For the Period From, <strong>2025-01-01</strong> to <strong>2025-03-31</strong>",
+      ),
+    );
+    expect(printWindow.print).toHaveBeenCalled();
+    vi.restoreAllMocks();
   });
 
   it("renders statement entry rows", () => {
@@ -167,8 +210,42 @@ describe("PartyStatementPage", () => {
       }),
     ]);
     renderPage();
-    expect(screen.getByText("First sale")).toBeInTheDocument();
-    expect(screen.getByText("Second sale")).toBeInTheDocument();
+    expect(screen.getByText(/First sale/)).toBeInTheDocument();
+    expect(screen.getByText(/Second sale/)).toBeInTheDocument();
+  });
+
+  it("shows weight, rate, and total for transaction entries", () => {
+    setupSuccessfulQueries([
+      makeEntry({
+        quantityKg: "16.000",
+        ratePerKg: "325.00",
+        totalAmount: "5200.00",
+      }),
+    ]);
+    renderPage();
+    expect(screen.getByText("Weight")).toBeInTheDocument();
+    expect(screen.getByText("16.000 kg")).toBeInTheDocument();
+    expect(screen.getByText(/325\.00/)).toBeInTheDocument();
+    expect(screen.queryByText(/5,200\.00/)).not.toBeInTheDocument();
+    expect(screen.getByText("Debit")).toBeInTheDocument();
+    expect(screen.getByText("Credit")).toBeInTheDocument();
+  });
+
+  it("shows period totals and closing balance at the end of the statement", () => {
+    setupSuccessfulQueries([
+      makeEntry({ entryType: "debit", amount: "1000", runningBalance: "-1000" }),
+      makeEntry({
+        id: "entry-2",
+        entryType: "credit",
+        amount: "250",
+        runningBalance: "-750",
+      }),
+    ]);
+    renderPage();
+    expect(screen.getByText("Total")).toBeInTheDocument();
+    expect(screen.getByText("Closing Balance")).toBeInTheDocument();
+    expect(screen.getAllByText(/1,000\.00/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/750\.00/).length).toBeGreaterThan(0);
   });
 
   it("shows investor payables as positive labelled balances", () => {
@@ -177,11 +254,11 @@ describe("PartyStatementPage", () => {
         makeEntry({
           entryType: "credit",
           amount: "180000",
-          runningBalance: "-180000",
+          runningBalance: "180000",
         }),
       ],
       makeParty({ partyType: PartyType.INVESTOR, name: "Tayyab" }),
-      "-180000",
+      "180000",
     );
     renderPage();
     expect(screen.getByText("Investor balance")).toBeInTheDocument();

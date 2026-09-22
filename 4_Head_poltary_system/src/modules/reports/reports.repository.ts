@@ -68,7 +68,7 @@ export class ReportsRepository {
       .createQueryBuilder('it')
       .select('COALESCE(SUM(it.totalAmount), 0)', 'sum')
       .where('it.transferDate >= :from', { from })
-      .andWhere('it.transferDate <= :to', { to })
+      .andWhere('it.transferDate < :to', { to })
       .getRawOne();
     return parseFloat(result.sum || '0');
   }
@@ -83,7 +83,7 @@ export class ReportsRepository {
       .createQueryBuilder('t')
       .select('COALESCE(SUM(t.totalAmount), 0)', 'sum')
       .where(`t.${dateField} >= :from`, { from })
-      .andWhere(`t.${dateField} <= :to`, { to })
+      .andWhere(`t.${dateField} < :to`, { to })
       .andWhere('t.deleted_at IS NULL');
     if (repo.metadata.findColumnWithPropertyName('status'))
       query.andWhere('t.status NOT IN (:...cancelledStatuses)', {
@@ -130,6 +130,19 @@ export class ReportsRepository {
           from,
           to,
         );
+        const operatingExpenses = await this.sumDepartmentExpenses(
+          department.id,
+          from,
+          to,
+        );
+        const payrollExpenses = await this.sumLedgerAccount(
+          department.id,
+          ['payroll_expense'],
+          'debit',
+          from,
+          to,
+        );
+        const grossProfit = revenue + otherIncome - cogs;
         return {
           departmentId: department.id,
           departmentName: department.name,
@@ -137,7 +150,14 @@ export class ReportsRepository {
           revenue: revenue.toFixed(2),
           otherIncome: otherIncome.toFixed(2),
           cogs: cogs.toFixed(2),
-          grossProfit: (revenue + otherIncome - cogs).toFixed(2),
+          grossProfit: grossProfit.toFixed(2),
+          operatingExpenses: operatingExpenses.toFixed(2),
+          payrollExpenses: payrollExpenses.toFixed(2),
+          netProfit: (
+            grossProfit -
+            operatingExpenses -
+            payrollExpenses
+          ).toFixed(2),
         };
       }),
     );
@@ -154,7 +174,7 @@ export class ReportsRepository {
       .select('COALESCE(SUM(sale.totalAmount), 0)', 'sum')
       .where('sale.department_id = :departmentId', { departmentId })
       .andWhere('sale.sale_date >= :from', { from })
-      .andWhere('sale.sale_date <= :to', { to })
+      .andWhere('sale.sale_date < :to', { to })
       .andWhere('sale.deleted_at IS NULL');
     if (repo.metadata.findColumnWithPropertyName('status'))
       query.andWhere('sale.status NOT IN (:...cancelledStatuses)', {
@@ -163,6 +183,23 @@ export class ReportsRepository {
     if (repo.metadata.findColumnWithPropertyName('destinationType'))
       query.andWhere("sale.destinationType = 'external'");
     const result = await query.getRawOne();
+    return Number(result?.sum ?? 0);
+  }
+
+  /** Expense records are authoritative; imported ledgers can contain retries. */
+  private async sumDepartmentExpenses(
+    departmentId: string,
+    from: Date,
+    to: Date,
+  ): Promise<number> {
+    const result = await this.expenseRepo
+      .createQueryBuilder('expense')
+      .select('COALESCE(SUM(expense.amount), 0)', 'sum')
+      .where('expense.department_id = :departmentId', { departmentId })
+      .andWhere('expense.expense_date >= :from', { from })
+      .andWhere('expense.expense_date < :to', { to })
+      .andWhere('expense.deleted_at IS NULL')
+      .getRawOne<{ sum: string }>();
     return Number(result?.sum ?? 0);
   }
 
@@ -179,7 +216,7 @@ export class ReportsRepository {
       .leftJoin('le.account', 'acct')
       .select('COALESCE(SUM(le.amount), 0)', 'sum')
       .where('le.entry_date >= :from', { from })
-      .andWhere('le.entry_date <= :to', { to })
+      .andWhere('le.entry_date < :to', { to })
       .andWhere('le.entry_type = :entryType', { entryType })
       .andWhere('acct.code IN (:...codes)', { codes: accountCodes });
 
@@ -206,7 +243,7 @@ export class ReportsRepository {
       .addSelect('le.department_id', 'departmentId')
       .addSelect('department.name', 'departmentName')
       .addSelect(
-        "SUM(CASE WHEN le.entry_type = 'debit' THEN CAST(le.amount AS numeric) ELSE 0 END) - SUM(CASE WHEN le.entry_type = 'credit' THEN CAST(le.amount AS numeric) ELSE 0 END)",
+        "SUM(CASE WHEN le.entry_type = 'credit' THEN CAST(le.amount AS numeric) ELSE 0 END) - SUM(CASE WHEN le.entry_type = 'debit' THEN CAST(le.amount AS numeric) ELSE 0 END)",
         'balance',
       )
       .andWhere('le.party_id IS NOT NULL')
@@ -216,7 +253,7 @@ export class ReportsRepository {
       .addGroupBy('le.department_id')
       .addGroupBy('department.name')
       .having(
-        "SUM(CASE WHEN le.entry_type = 'debit' THEN CAST(le.amount AS numeric) ELSE 0 END) - SUM(CASE WHEN le.entry_type = 'credit' THEN CAST(le.amount AS numeric) ELSE 0 END) != 0",
+        "SUM(CASE WHEN le.entry_type = 'credit' THEN CAST(le.amount AS numeric) ELSE 0 END) - SUM(CASE WHEN le.entry_type = 'debit' THEN CAST(le.amount AS numeric) ELSE 0 END) != 0",
       );
 
     if (departmentId) {
@@ -260,7 +297,7 @@ export class ReportsRepository {
     if (departmentId)
       movements.andWhere('m.department_id=:departmentId', { departmentId });
     if (from) movements.andWhere('m.movement_date>=:from', { from });
-    if (to) movements.andWhere('m.movement_date<=:to', { to });
+    if (to) movements.andWhere('m.movement_date<:to', { to });
     return {
       summary,
       movements: await movements
@@ -283,7 +320,7 @@ export class ReportsRepository {
       .addSelect('e.department_id', 'departmentId')
       .addSelect('COALESCE(SUM(CAST(e.amount AS numeric)), 0)', 'total')
       .where('e.expenseDate >= :from', { from })
-      .andWhere('e.expenseDate <= :to', { to })
+      .andWhere('e.expenseDate < :to', { to })
       .groupBy('category.name')
       .addGroupBy('category.id')
       .addGroupBy('e.department_id');
@@ -323,7 +360,7 @@ export class ReportsRepository {
 
     if (from)
       qb.andWhere('COALESCE(sr.paid_date,sr.created_at) >= :from', { from });
-    if (to) qb.andWhere('COALESCE(sr.paid_date,sr.created_at) <= :to', { to });
+    if (to) qb.andWhere('COALESCE(sr.paid_date,sr.created_at) < :to', { to });
     if (departmentId)
       qb.andWhere('employee.department_id = :departmentId', { departmentId });
 

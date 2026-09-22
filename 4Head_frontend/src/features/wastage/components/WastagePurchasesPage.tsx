@@ -65,7 +65,7 @@ const purchaseSchema = z
     ]),
     quantityKg: z.coerce
       .number()
-      .positive("Quantity must be greater than zero."),
+      .positive("Weight must be greater than zero."),
     ratePerKg: z.coerce.number().positive("Rate must be greater than zero."),
     amountPaid: z.coerce.number().min(0, "Amount paid cannot be negative."),
     paymentMethod: z.enum(["cash", "bank", "credit"]),
@@ -150,7 +150,7 @@ export function WastagePurchasesPage() {
     },
     {
       id: "quantity",
-      header: "Quantity",
+      header: "Weight",
       cell: (row) => `${row.quantityKg} kg`,
       align: "right",
     },
@@ -430,7 +430,7 @@ function PurchaseDialog({
               </SelectContent>
             </Select>
           </Field>
-          <Field label="Quantity (kg)" error={errors.quantityKg?.message}>
+          <Field label="Weight (kg)" error={errors.quantityKg?.message}>
             <Input
               type="number"
               min="0.001"

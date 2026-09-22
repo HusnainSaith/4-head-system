@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,7 @@ export type StockWriteoffReason = (typeof stockWriteoffReasons)[number];
 
 export interface StockWriteoffInput {
   quantityKg: number;
+  ratePerKg: number;
   reason: StockWriteoffReason;
   note?: string;
   writeoffDate: string;
@@ -38,7 +39,8 @@ export interface StockWriteoffInput {
 }
 
 const schema = z.object({
-  quantityKg: z.number().positive("Quantity must be greater than zero."),
+  quantityKg: z.number().positive("Weight must be greater than zero."),
+  ratePerKg: z.number().positive("Sale rate must be greater than zero."),
   reason: z.enum(stockWriteoffReasons),
   note: z.string().max(255, "Note must be 255 characters or fewer.").optional(),
   writeoffDate: z.string().min(1, "Date is required."),
@@ -52,6 +54,7 @@ export function StockWriteoffDialog({
   onClose,
   onSubmit,
   stockOptions,
+  initialValue,
 }: {
   open: boolean;
   availableKg: string;
@@ -63,8 +66,10 @@ export function StockWriteoffDialog({
     label: string;
     availableKg: string;
   }>;
+  initialValue?: StockWriteoffInput;
 }) {
   const [quantity, setQuantity] = useState("");
+  const [rate, setRate] = useState("");
   const [reason, setReason] = useState<StockWriteoffReason>("spoilage");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [note, setNote] = useState("");
@@ -76,8 +81,19 @@ export function StockWriteoffDialog({
     stockOptions?.find((option) => option.value === stockType)?.availableKg ??
     availableKg;
 
+  useEffect(() => {
+    if (!open || !initialValue) return;
+    setQuantity(String(initialValue.quantityKg));
+    setRate(String(initialValue.ratePerKg));
+    setReason(initialValue.reason);
+    setDate(initialValue.writeoffDate.slice(0, 10));
+    setNote(initialValue.note ?? "");
+    if (initialValue.stockType) setStockType(initialValue.stockType);
+  }, [open, initialValue]);
+
   const reset = () => {
     setQuantity("");
+    setRate("");
     setReason("spoilage");
     setDate(new Date().toISOString().slice(0, 10));
     setNote("");
@@ -94,10 +110,10 @@ export function StockWriteoffDialog({
     <Dialog open={open} onOpenChange={(next) => !next && handleClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Shrinkage</DialogTitle>
+          <DialogTitle>{initialValue ? "Edit Shrinkage" : "Add Shrinkage"}</DialogTitle>
           <DialogDescription>
-            Available: {effectiveAvailable} kg. The server validates stock and
-            values the loss at the locked current WAC.
+            Available: {effectiveAvailable} kg. Amount is calculated using the
+            sale rate entered below.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -106,6 +122,7 @@ export function StockWriteoffDialog({
             event.preventDefault();
             const parsed = schema.safeParse({
               quantityKg: Number(quantity),
+              ratePerKg: Number(rate),
               reason,
               writeoffDate: date,
               note: note.trim() || undefined,
@@ -155,7 +172,7 @@ export function StockWriteoffDialog({
             </div>
           ) : null}
           <div className="space-y-1.5">
-            <Label htmlFor="shrinkage-quantity">Quantity (kg) *</Label>
+            <Label htmlFor="shrinkage-quantity">Weight (kg) *</Label>
             <Input
               id="shrinkage-quantity"
               type="number"
@@ -165,6 +182,18 @@ export function StockWriteoffDialog({
               required
               value={quantity}
               onChange={(event) => setQuantity(event.target.value)}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="shrinkage-rate">Sale rate per kg *</Label>
+            <Input
+              id="shrinkage-rate"
+              type="number"
+              min="0.01"
+              step="0.01"
+              required
+              value={rate}
+              onChange={(event) => setRate(event.target.value)}
             />
           </div>
           <div className="space-y-1.5">
@@ -209,7 +238,7 @@ export function StockWriteoffDialog({
               Cancel
             </Button>
             <Button type="submit" isLoading={loading}>
-              Record shrinkage
+              {initialValue ? "Save changes" : "Record shrinkage"}
             </Button>
           </DialogFooter>
         </form>

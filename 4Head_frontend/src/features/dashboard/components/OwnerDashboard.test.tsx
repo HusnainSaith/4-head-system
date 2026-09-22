@@ -12,9 +12,9 @@ vi.mock("@/features/dashboard/dashboardApi", () => ({
   useGetOutstandingBalancesQuery: () => ({
     data: {
       data: [
-        { partyId: "p1", balance: "40000" },
-        { partyId: "p2", balance: "10000" },
-        { partyId: "p3", balance: "-30000" },
+        { partyId: "p1", balance: "-40000" },
+        { partyId: "p2", balance: "-10000" },
+        { partyId: "p3", balance: "30000" },
       ],
     },
     isLoading: false,
@@ -29,8 +29,12 @@ vi.mock("@/features/dashboard/dashboardApi", () => ({
           departmentName: "Brokerage",
           departmentType: "BROKERAGE",
           revenue: "200000",
+          otherIncome: "0",
           cogs: "190000",
           grossProfit: "10000",
+          operatingExpenses: "1000",
+          payrollExpenses: "500",
+          netProfit: "8500",
         },
       ],
     },
@@ -81,7 +85,7 @@ describe("OwnerDashboard", () => {
     expect(screen.getByText(/30,000/)).toBeInTheDocument();
   });
 
-  it("shows live department revenue, gross profit, and quick links", () => {
+  it("shows a reconciled department profit and loss breakdown", () => {
     render(
       <MemoryRouter>
         <OwnerDashboard />
@@ -89,8 +93,11 @@ describe("OwnerDashboard", () => {
     );
     expect(screen.getAllByText("Brokerage").length).toBeGreaterThan(0);
     expect(screen.getByText("Gross profit")).toBeInTheDocument();
+    expect(screen.getAllByText("Net profit").length).toBeGreaterThan(0);
+    expect(screen.getByText("Expenses + payroll")).toBeInTheDocument();
     expect(screen.getByText(/200,000/)).toBeInTheDocument();
     expect(screen.getByText(/10,000/)).toBeInTheDocument();
+    expect(screen.getByText(/8,500/)).toBeInTheDocument();
     expect(screen.queryByText("Coming soon")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /view report/i })).toHaveAttribute(
       "href",

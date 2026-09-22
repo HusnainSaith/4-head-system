@@ -6,6 +6,9 @@ import { BrokerageTransactionsPage } from "./BrokerageTransactionsPage";
 vi.mock("@/features/parties/components/DepartmentBalancesPanel", () => ({
   DepartmentBalancesPanel: () => null,
 }));
+vi.mock("@/features/parties/components/PartySettlementDialog", () => ({
+  PartySettlementDialog: () => null,
+}));
 vi.mock("@/features/accounts/components", () => ({
   PaymentAccountFields: () => null,
 }));
@@ -93,6 +96,8 @@ vi.mock("../brokerageApi", () => ({
     { isLoading: false },
   ],
   useCreateBrokerageSaleMutation: () => [createSale, { isLoading: false }],
+  useUpdateBrokeragePurchaseMutation: () => [vi.fn(), { isLoading: false }],
+  useUpdateBrokerageSaleMutation: () => [vi.fn(), { isLoading: false }],
   useDeleteBrokeragePurchaseMutation: () => [vi.fn()],
   useDeleteBrokerageSaleMutation: () => [vi.fn()],
 }));

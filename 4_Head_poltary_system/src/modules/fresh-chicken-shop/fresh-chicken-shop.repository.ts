@@ -52,6 +52,28 @@ export class FreshChickenShopRepository implements IShopRepository {
     await this.saleRepo.update({ id } as any, { deletedAt: new Date() } as any);
   }
 
+  async sumActiveSaleQuantity(from?: string, to?: string): Promise<string> {
+    const query = this.saleRepo.createQueryBuilder('sale')
+      .select('COALESCE(SUM(sale.quantityKg), 0)', 'total')
+      .where('sale.deletedAt IS NULL');
+    if (from) query.andWhere('sale.saleDate >= :from', { from });
+    if (to) query.andWhere('sale.saleDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
+
+  async sumActiveIncomingQuantity(departmentId: string, from?: string, to?: string): Promise<string> {
+    const repo = this.saleRepo.manager.getRepository(InternalTransfer);
+    const query = repo.createQueryBuilder('transfer')
+      .select('COALESCE(SUM(transfer.quantityKg), 0)', 'total')
+      .where('transfer.deletedAt IS NULL')
+      .andWhere('transfer.toDepartmentId = :departmentId', { departmentId });
+    if (from) query.andWhere('transfer.transferDate >= :from', { from });
+    if (to) query.andWhere('transfer.transferDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
+
   async findIncomingTransfers(
     departmentId: string,
   ): Promise<InternalTransfer[]> {

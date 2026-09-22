@@ -16,6 +16,7 @@ import { SupplyPurchase } from './entities/supply-purchase.entity';
 import { SupplySale } from './entities/supply-sale.entity';
 import { InternalTransfer } from './entities/internal-transfer.entity';
 import { StockMovement } from '../inventory/entities/stock-movement.entity';
+import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import { Party } from '../parties/entities/party.entity';
 import { StockMovementSourceEnum } from '../inventory/enums/stock-movement.enum';
 import { StockType } from '../inventory/enums/stock-type.enum';
@@ -248,12 +249,61 @@ export class SupplyService implements OnModuleInit {
     return p;
   }
 
-  updatePurchase(_id: string, _dto: Partial<CreateSupplyPurchaseDto>) {
-    void _id;
-    void _dto;
-    throw new ConflictException(
-      'Posted purchases cannot be overwritten; cancel and recreate the transaction',
-    );
+  async updatePurchase(id: string, dto: Partial<CreateSupplyPurchaseDto>) {
+    if (!dto.purchaseDate)
+      throw new BadRequestException('purchaseDate is required');
+    return this.dataSource.transaction(async (manager) => {
+      const purchase = await this.supplyRepository.findPurchaseById(id, manager);
+      if (!purchase) throw new NotFoundException('Supply purchase not found');
+      const dateOnly = Object.keys(dto).every((key) => key === 'purchaseDate');
+      const nextQuantity = dto.quantityKg ?? Number(purchase.quantityKg);
+      const nextRate = dto.ratePerKg ?? Number(purchase.ratePerKg);
+      const nextTotal = (nextQuantity * nextRate).toFixed(2);
+      const changes: Partial<SupplyPurchase> = {
+        purchaseDate: new Date(dto.purchaseDate!),
+        totalAmount: nextTotal,
+      };
+      if (dto.partyId !== undefined) changes.partyId = dto.partyId;
+      if (dto.quantityKg !== undefined) changes.quantityKg = dto.quantityKg.toFixed(3);
+      if (dto.ratePerKg !== undefined) changes.ratePerKg = dto.ratePerKg.toFixed(2);
+      if (dto.paymentMethod !== undefined) changes.paymentMethod = dto.paymentMethod;
+      if (dto.amountPaid !== undefined) {
+        changes.amountPaid = dto.amountPaid.toFixed(2);
+        changes.outstandingAmount = (Number(nextTotal) - dto.amountPaid).toFixed(2);
+      }
+      if (dto.vehicleId !== undefined) changes.vehicleId = dto.vehicleId;
+      if (dto.notes !== undefined) changes.notes = dto.notes;
+      await manager.update(SupplyPurchase, id, {
+        ...changes,
+      });
+      await manager.update(
+        StockMovement,
+        { sourceType: StockMovementSourceEnum.PURCHASE, sourceId: id },
+        {
+          movementDate: new Date(dto.purchaseDate),
+          ...(dto.quantityKg !== undefined ? { quantityKg: dto.quantityKg.toFixed(3) } : {}),
+          ...(dto.ratePerKg !== undefined ? { ratePerKg: dto.ratePerKg.toFixed(4), resultingWac: dto.ratePerKg.toFixed(4) } : {}),
+        },
+      );
+      await manager.update(
+        LedgerEntry,
+        { sourceType: 'purchase', sourceId: id },
+        { entryDate: dto.purchaseDate },
+      );
+      if (!dateOnly) {
+        const entries = await manager.getRepository(LedgerEntry).find({
+          where: { sourceType: 'purchase', sourceId: id },
+          relations: { account: true },
+        });
+        for (const entry of entries) {
+          if (entry.account.code === 'cogs') entry.amount = nextTotal;
+          if (entry.account.code === 'cash') entry.amount = changes.amountPaid ?? purchase.amountPaid;
+          if (entry.account.code === 'accounts_payable') entry.amount = changes.amountPaid !== undefined ? (Number(nextTotal) - Number(changes.amountPaid)).toFixed(2) : (Number(nextTotal) - Number(purchase.amountPaid)).toFixed(2);
+        }
+        await manager.getRepository(LedgerEntry).save(entries);
+      }
+      return this.supplyRepository.findPurchaseById(id, manager);
+    });
   }
 
   async softDeletePurchase(id: string, actorId: string) {
@@ -445,12 +495,54 @@ export class SupplyService implements OnModuleInit {
     return s;
   }
 
-  updateSale(_id: string, _dto: Partial<CreateSupplySaleDto>) {
-    void _id;
-    void _dto;
-    throw new ConflictException(
-      'Posted sales cannot be overwritten; cancel and recreate the transaction',
-    );
+  async updateSale(id: string, dto: Partial<CreateSupplySaleDto>) {
+    if (!dto.saleDate)
+      throw new BadRequestException('saleDate is required');
+    return this.dataSource.transaction(async (manager) => {
+      const sale = await this.supplyRepository.findSaleById(id, manager);
+      if (!sale) throw new NotFoundException('Supply sale not found');
+      const dateOnly = Object.keys(dto).every((key) => key === 'saleDate');
+      const nextQuantity = dto.quantityKg ?? Number(sale.quantityKg);
+      const nextRate = dto.ratePerKg ?? Number(sale.ratePerKg);
+      const nextTotal = (nextQuantity * nextRate).toFixed(2);
+      const changes: Partial<SupplySale> = { saleDate: new Date(dto.saleDate!), totalAmount: nextTotal };
+      if (dto.partyId !== undefined) changes.partyId = dto.partyId;
+      if (dto.quantityKg !== undefined) changes.quantityKg = dto.quantityKg.toFixed(3);
+      if (dto.ratePerKg !== undefined) changes.ratePerKg = dto.ratePerKg.toFixed(2);
+      if (dto.paymentMethod !== undefined) changes.paymentMethod = dto.paymentMethod;
+      if (dto.amountReceived !== undefined) {
+        changes.amountReceived = dto.amountReceived.toFixed(2);
+        changes.outstandingAmount = (Number(nextTotal) - dto.amountReceived).toFixed(2);
+      }
+      if (dto.vehicleId !== undefined) changes.vehicleId = dto.vehicleId;
+      if (dto.notes !== undefined) changes.notes = dto.notes;
+      await manager.update(SupplySale, id, {
+        ...changes,
+      });
+      await manager.update(
+        StockMovement,
+        { sourceType: StockMovementSourceEnum.SALE, sourceId: id },
+        { movementDate: new Date(dto.saleDate), ...(dto.quantityKg !== undefined ? { quantityKg: dto.quantityKg.toFixed(3) } : {}) },
+      );
+      await manager.update(
+        LedgerEntry,
+        { sourceType: 'sale', sourceId: id },
+        { entryDate: dto.saleDate },
+      );
+      if (!dateOnly) {
+        const entries = await manager.getRepository(LedgerEntry).find({
+          where: { sourceType: 'sale', sourceId: id },
+          relations: { account: true },
+        });
+        for (const entry of entries) {
+          if (entry.account.code === 'revenue') entry.amount = nextTotal;
+          if (entry.account.code === 'cash') entry.amount = changes.amountReceived ?? sale.amountReceived;
+          if (entry.account.code === 'accounts_receivable') entry.amount = changes.amountReceived !== undefined ? (Number(nextTotal) - Number(changes.amountReceived)).toFixed(2) : (Number(nextTotal) - Number(sale.amountReceived)).toFixed(2);
+        }
+        await manager.getRepository(LedgerEntry).save(entries);
+      }
+      return this.supplyRepository.findSaleById(id, manager);
+    });
   }
 
   async softDeleteSale(id: string, actorId: string) {
@@ -761,9 +853,9 @@ export class SupplyService implements OnModuleInit {
   }
 
   async createStockWriteoff(dto: any, createdBy: string) {
-    if (!dto.quantityKg || !dto.writeoffDate || !dto.reason) {
+    if (!dto.quantityKg || !dto.ratePerKg || !dto.writeoffDate || !dto.reason) {
       throw new BadRequestException(
-        'quantityKg, writeoffDate, and reason are required',
+        'quantityKg, ratePerKg, writeoffDate, and reason are required',
       );
     }
     const savedWriteoff = await this.dataSource.transaction((manager) =>
@@ -814,51 +906,70 @@ export class SupplyService implements OnModuleInit {
     return savedWriteoff;
   }
 
+  listStockWriteoffs() { return this.inventoryService.listWriteoffs(this.supplyDeptId); }
+  getStockWriteoff(id: string) { return this.inventoryService.getWriteoff(id, this.supplyDeptId); }
+  updateStockWriteoff(id: string, dto: any, actorId: string) {
+    return this.dataSource.transaction((manager) => this.inventoryService.updateWriteoff(id, this.supplyDeptId, dto, actorId, manager));
+  }
+  async deleteStockWriteoff(id: string, actorId: string) {
+    await this.dataSource.transaction((manager) => this.inventoryService.deleteWriteoff(id, this.supplyDeptId, actorId, manager));
+    return { success: true };
+  }
+
   async getProfitLoss(from?: string, to?: string) {
-    const startDate = from ? new Date(from) : new Date('1970-01-01');
-    const endDate = to ? new Date(to) : new Date();
+    const fromDate = from ?? '1970-01-01';
+    const toDate = to ?? new Date().toISOString().slice(0, 10);
 
     const report = async (excludeInternal: boolean) => {
-      const [revenue, cogs, operatingExpenses, payrollExpenses] =
+      const [revenue, cogs, transferRevenue, operatingExpenses, payrollExpenses] =
         await Promise.all([
-          this.ledgerService.sumByAccount(
-            this.supplyDeptId,
-            'revenue',
-            startDate,
-            endDate,
-            'credit',
-            excludeInternal ? 'internal_transfer' : undefined,
-          ),
-          this.sumOutboundCogs(startDate, endDate, !excludeInternal),
-          this.ledgerService.sumByAccount(
-            this.supplyDeptId,
-            'operating_expense',
-            startDate,
-            endDate,
-            'debit',
-          ),
+          this.supplyRepository.sumActiveSaleTotal(from, to),
+          this.supplyRepository.sumActivePurchaseTotal(from, to),
+          excludeInternal
+            ? Promise.resolve('0.00')
+            : this.supplyRepository.sumActiveTransferTotal(from, to),
+          this.expensesService
+            ? this.expensesService.sumTotal(this.supplyDeptId, from, to)
+            : this.ledgerService.sumByAccount(
+                this.supplyDeptId,
+                'operating_expense',
+                fromDate,
+                toDate,
+                'debit',
+              ),
           this.ledgerService.sumByAccount(
             this.supplyDeptId,
             'payroll_expense',
-            startDate,
-            endDate,
+            fromDate,
+            toDate,
             'debit',
           ),
         ]);
 
-      const grossProfit = (Number(revenue) - Number(cogs)).toFixed(2);
+      const totalRevenue = (Number(revenue) + Number(transferRevenue)).toFixed(2);
+      const grossProfit = (Number(totalRevenue) - Number(cogs)).toFixed(2);
       const netProfit = (
         Number(grossProfit) -
         Number(operatingExpenses) -
         Number(payrollExpenses)
       ).toFixed(2);
+      const [purchaseQuantityKg, externalSaleQuantityKg, transferQuantityKg, shrinkageKg] = await Promise.all([
+        this.supplyRepository.sumActivePurchaseQuantity(from, to),
+        this.supplyRepository.sumActiveSaleQuantity(from, to),
+        excludeInternal ? Promise.resolve('0.000') : this.supplyRepository.sumActiveTransferQuantity(from, to),
+        this.inventoryService.sumWriteoffQuantity(this.supplyDeptId, fromDate, toDate),
+      ]);
+      const saleQuantityKg = (Number(externalSaleQuantityKg) + Number(transferQuantityKg)).toFixed(3);
       return {
-        revenue,
+        revenue: totalRevenue,
         cogs,
         grossProfit,
         operatingExpenses,
         payroll: payrollExpenses,
         netProfit,
+        purchaseQuantityKg,
+        saleQuantityKg,
+        shrinkageKg,
       };
     };
     const [externalOnly, includingInternalTransfers] = await Promise.all([
@@ -867,6 +978,7 @@ export class SupplyService implements OnModuleInit {
     ]);
     return { externalOnly, includingInternalTransfers };
   }
+
 
   /**
    * Departmental P&L must expense only stock that left Supply during the
@@ -894,13 +1006,27 @@ export class SupplyService implements OnModuleInit {
         departmentId: this.supplyDeptId,
       })
       .andWhere('movement.movement_date >= :from', { from })
-      .andWhere('movement.movement_date <= :to', { to })
+      .andWhere('movement.movement_date < :to', { to })
       .andWhere('movement.movement_type = :movementType', {
         movementType: 'sale_out',
       })
       .andWhere('movement.source_type IN (:...sourceTypes)', {
         sourceTypes,
       })
+      .andWhere(`(
+        (movement.source_type = 'sale' AND EXISTS (
+          SELECT 1 FROM supply_sales active_sale
+          WHERE active_sale.id = movement.source_id
+            AND active_sale.deleted_at IS NULL
+            AND active_sale.status = 'posted'
+        ))
+        OR
+        (movement.source_type = 'internal_transfer' AND EXISTS (
+          SELECT 1 FROM internal_transfers active_transfer
+          WHERE active_transfer.id = movement.source_id
+            AND active_transfer.deleted_at IS NULL
+        ))
+      )`)
       .getRawOne<{ total: string }>();
     return Number(result?.total ?? 0).toFixed(2);
   }

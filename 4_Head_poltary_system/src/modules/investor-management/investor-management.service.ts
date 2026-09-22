@@ -146,7 +146,11 @@ export class InvestorManagementService {
     const balanceRows = items.length
       ? ((await this.dataSource.query(
           `SELECT investor.id AS "investorId",
-                  COALESCE(SUM(CASE WHEN entry.entry_type='credit' THEN entry.amount ELSE -entry.amount END),0)::text AS balance
+                  COALESCE(SUM(CASE
+                    WHEN entry.source_type='opening_balance' AND entry.entry_type='debit' THEN entry.amount
+                    WHEN entry.source_type='opening_balance' THEN -entry.amount
+                    WHEN entry.entry_type='credit' THEN entry.amount
+                    ELSE -entry.amount END),0)::text AS balance
              FROM investors investor
              LEFT JOIN ledger_entries entry ON entry.party_id=investor.party_id
             WHERE investor.id = ANY($1::uuid[])
@@ -824,7 +828,11 @@ export class InvestorManagementService {
       .getRepository(InvestorProfitAllocation)
       .find();
     const totalCapitalRows = (await this.dataSource.query(
-      `SELECT COALESCE(SUM(CASE WHEN entry.entry_type='credit' THEN entry.amount ELSE -entry.amount END),0)::text AS balance
+      `SELECT COALESCE(SUM(CASE
+          WHEN entry.source_type='opening_balance' AND entry.entry_type='debit' THEN entry.amount
+          WHEN entry.source_type='opening_balance' THEN -entry.amount
+          WHEN entry.entry_type='credit' THEN entry.amount
+          ELSE -entry.amount END),0)::text AS balance
          FROM investors investor
          LEFT JOIN ledger_entries entry ON entry.party_id=investor.party_id
         WHERE investor.deleted_at IS NULL`,
@@ -857,7 +865,11 @@ export class InvestorManagementService {
   async capitalReport() {
     return this.dataSource.query(`
       SELECT investor.id AS "investorId", party.name AS "investorName",
-        COALESCE(SUM(CASE WHEN entry.entry_type='credit' THEN entry.amount ELSE -entry.amount END),0)::text AS "currentPrincipal"
+        COALESCE(SUM(CASE
+          WHEN entry.source_type='opening_balance' AND entry.entry_type='debit' THEN entry.amount
+          WHEN entry.source_type='opening_balance' THEN -entry.amount
+          WHEN entry.entry_type='credit' THEN entry.amount
+          ELSE -entry.amount END),0)::text AS "currentPrincipal"
       FROM investors investor JOIN parties party ON party.id=investor.party_id
       LEFT JOIN ledger_entries entry ON entry.party_id=investor.party_id
       GROUP BY investor.id,party.name ORDER BY party.name`);
@@ -964,7 +976,11 @@ export class InvestorManagementService {
   }
   private async accountBalance(id: string, manager: EntityManager) {
     const rows = (await manager.query(
-      `SELECT COALESCE(SUM(CASE WHEN entry.entry_type='credit' THEN entry.amount ELSE -entry.amount END),0)::text AS balance
+      `SELECT COALESCE(SUM(CASE
+          WHEN entry.source_type='opening_balance' AND entry.entry_type='debit' THEN entry.amount
+          WHEN entry.source_type='opening_balance' THEN -entry.amount
+          WHEN entry.entry_type='credit' THEN entry.amount
+          ELSE -entry.amount END),0)::text AS balance
          FROM investors investor
          LEFT JOIN ledger_entries entry ON entry.party_id=investor.party_id
         WHERE investor.id=$1`,

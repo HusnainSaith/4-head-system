@@ -27,7 +27,23 @@ describe('ReportsService department profit and loss', () => {
     ]);
     expect(repository.getDepartmentProfitLoss).toHaveBeenCalledWith(
       new Date('2026-07-01'),
-      new Date('2026-07-31'),
+      new Date('2026-08-01'),
+    );
+  });
+
+  it('includes the whole selected day by using the next day as an exclusive end', async () => {
+    const repository = {
+      sumExternalSales: jest.fn().mockResolvedValue(100),
+      sumInternalTransferRevenue: jest.fn().mockResolvedValue(0),
+      sumLedgerAccount: jest.fn().mockResolvedValue(0),
+    } as unknown as jest.Mocked<ReportsRepository>;
+    const service = new ReportsService(repository);
+
+    await service.getConsolidatedProfitLoss('2026-07-02', '2026-07-02');
+
+    expect(repository.sumExternalSales).toHaveBeenCalledWith(
+      new Date('2026-07-02T00:00:00.000Z'),
+      new Date('2026-07-03T00:00:00.000Z'),
     );
   });
 });

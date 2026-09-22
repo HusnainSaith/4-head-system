@@ -88,7 +88,7 @@ export class BrotherService {
         await this.ensureUniqueReference(dto.reference, manager);
 
       const balances = await this.getFarmPayableBalances(farm.id, manager);
-      const eligible = balances.filter(({ balance }) => balance < 0n);
+      const eligible = balances.filter(({ balance }) => balance > 0n);
       const selected = dto.departmentId
         ? eligible.find(({ departmentId }) => departmentId === dto.departmentId)
         : eligible.length === 1
@@ -104,7 +104,7 @@ export class BrotherService {
         );
       }
       const amount = moneyToCents(dto.amount);
-      if (amount > -selected.balance)
+      if (amount > selected.balance)
         throw new BadRequestException(
           'Adjustment amount exceeds the available farm payable balance.',
         );
@@ -120,7 +120,7 @@ export class BrotherService {
           brotherBalanceBefore: centsToMoney(brotherBefore),
           brotherBalanceAfter: centsToMoney(brotherBefore + amount),
           farmBalanceBefore: centsToMoney(selected.balance),
-          farmBalanceAfter: centsToMoney(selected.balance + amount),
+          farmBalanceAfter: centsToMoney(selected.balance - amount),
           transactionDate: dto.transactionDate,
           reference: dto.reference?.trim() || undefined,
           notes: dto.notes?.trim() || undefined,
@@ -584,7 +584,7 @@ export class BrotherService {
     manager: EntityManager,
   ) {
     const rows = await manager.query(
-      `SELECT department_id AS "departmentId", COALESCE(SUM(CASE WHEN entry_type='debit' THEN amount ELSE -amount END),0)::text AS balance FROM ledger_entries WHERE party_id=$1 GROUP BY department_id`,
+      `SELECT department_id AS "departmentId", COALESCE(SUM(CASE WHEN entry_type='credit' THEN amount ELSE -amount END),0)::text AS balance FROM ledger_entries WHERE party_id=$1 GROUP BY department_id`,
       [partyId],
     );
     return (rows as { departmentId: string; balance: string }[]).map((row) => ({

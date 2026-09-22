@@ -5,7 +5,7 @@ export interface PageHeaderProps {
   /** Screen title. */
   title: string;
   /** One-line description shown beneath the title. */
-  description?: string;
+  description?: ReactNode;
   /** Right-aligned actions row (buttons, filters, etc.). */
   actions?: ReactNode;
   /** Optional shared breadcrumb content rendered above the title. */

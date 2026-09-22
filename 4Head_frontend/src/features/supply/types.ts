@@ -19,6 +19,7 @@ export interface InternalTransfer { id: string; fromDepartmentId: string; toDepa
 export interface TransferListQuery { page?: number; limit?: number; from?: string; to?: string; settlementStatus?: SettlementStatus }
 export interface CreateTransferRequest { quantityKg: number; internalRatePerKg: number; transferDate: string; vehicleId?: string; notes?: string }
 export interface SettleTransferRequest extends PaymentAccountSelection { amount: number; settlementDate: string; paymentMethod: "cash" | "bank" }
-export interface ProfitLossView { revenue: string; cogs: string; grossProfit: string; operatingExpenses: string; payroll: string; netProfit: string }
+export interface ProfitLossView { revenue: string; cogs: string; grossProfit: string; operatingExpenses: string; payroll: string; netProfit: string; purchaseQuantityKg: string; saleQuantityKg: string; shrinkageKg: string }
+export interface StockWriteoff { id: string; quantityKg: string; ratePerKg: string; reason: "spoilage" | "mortality" | "transit_loss" | "other"; note?: string; writeoffDate: string; valuationAmount: string; stockType?: "standard" | "live" | "dressed" }
 export interface ProfitLossReport { externalOnly: ProfitLossView; includingInternalTransfers: ProfitLossView }
 export type PaginatedResponse<T> = ApiResponse<{ items: T[]; pagination: Pagination }>;

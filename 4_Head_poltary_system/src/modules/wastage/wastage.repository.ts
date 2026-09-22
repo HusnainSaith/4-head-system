@@ -62,4 +62,24 @@ export class WastageRepository implements IWastageRepository {
   async softDeleteSale(id: string): Promise<void> {
     await this.saleRepo.update({ id } as any, { deletedAt: new Date() } as any);
   }
+
+  async sumActivePurchaseQuantity(from?: string, to?: string): Promise<string> {
+    const query = this.purchaseRepo.createQueryBuilder('purchase')
+      .select('COALESCE(SUM(purchase.quantityKg), 0)', 'total')
+      .where('purchase.deletedAt IS NULL');
+    if (from) query.andWhere('purchase.purchaseDate >= :from', { from });
+    if (to) query.andWhere('purchase.purchaseDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
+
+  async sumActiveSaleQuantity(from?: string, to?: string): Promise<string> {
+    const query = this.saleRepo.createQueryBuilder('sale')
+      .select('COALESCE(SUM(sale.quantityKg), 0)', 'total')
+      .where('sale.deletedAt IS NULL');
+    if (from) query.andWhere('sale.saleDate >= :from', { from });
+    if (to) query.andWhere('sale.saleDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
 }

@@ -32,6 +32,70 @@ export class SupplyRepository {
     @InjectRepository(Party) private readonly partyRepo: Repository<Party>,
   ) {}
 
+  async sumActivePurchaseQuantity(from?: string, to?: string): Promise<string> {
+    const query = this.purchaseRepo.createQueryBuilder('purchase')
+      .select('COALESCE(SUM(purchase.quantityKg), 0)', 'total')
+      .where('purchase.deletedAt IS NULL')
+      .andWhere('purchase.status = :status', { status: 'posted' });
+    if (from) query.andWhere('purchase.purchaseDate >= :from', { from });
+    if (to) query.andWhere('purchase.purchaseDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
+
+  async sumActiveSaleQuantity(from?: string, to?: string): Promise<string> {
+    const query = this.saleRepo.createQueryBuilder('sale')
+      .select('COALESCE(SUM(sale.quantityKg), 0)', 'total')
+      .where('sale.deletedAt IS NULL')
+      .andWhere('sale.status = :status', { status: 'posted' });
+    if (from) query.andWhere('sale.saleDate >= :from', { from });
+    if (to) query.andWhere('sale.saleDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
+
+  async sumActiveTransferQuantity(from?: string, to?: string): Promise<string> {
+    const query = this.transferRepo.createQueryBuilder('transfer')
+      .select('COALESCE(SUM(transfer.quantityKg), 0)', 'total')
+      .where('transfer.deletedAt IS NULL');
+    if (from) query.andWhere('transfer.transferDate >= :from', { from });
+    if (to) query.andWhere('transfer.transferDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(3);
+  }
+
+  async sumActivePurchaseTotal(from?: string, to?: string): Promise<string> {
+    const query = this.purchaseRepo.createQueryBuilder('purchase')
+      .select('COALESCE(SUM(purchase.totalAmount), 0)', 'total')
+      .where('purchase.deletedAt IS NULL')
+      .andWhere('purchase.status = :status', { status: 'posted' });
+    if (from) query.andWhere('purchase.purchaseDate >= :from', { from });
+    if (to) query.andWhere('purchase.purchaseDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(2);
+  }
+
+  async sumActiveSaleTotal(from?: string, to?: string): Promise<string> {
+    const query = this.saleRepo.createQueryBuilder('sale')
+      .select('COALESCE(SUM(sale.totalAmount), 0)', 'total')
+      .where('sale.deletedAt IS NULL')
+      .andWhere('sale.status = :status', { status: 'posted' });
+    if (from) query.andWhere('sale.saleDate >= :from', { from });
+    if (to) query.andWhere('sale.saleDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(2);
+  }
+
+  async sumActiveTransferTotal(from?: string, to?: string): Promise<string> {
+    const query = this.transferRepo.createQueryBuilder('transfer')
+      .select('COALESCE(SUM(transfer.totalAmount), 0)', 'total')
+      .where('transfer.deletedAt IS NULL');
+    if (from) query.andWhere('transfer.transferDate >= :from', { from });
+    if (to) query.andWhere('transfer.transferDate <= :to', { to });
+    const row = await query.getRawOne<{ total: string }>();
+    return Number(row?.total ?? 0).toFixed(2);
+  }
+
   private paginate<T>(
     query: SelectQueryBuilder<T>,
     page: number,
