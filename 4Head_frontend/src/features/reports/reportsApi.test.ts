@@ -9,6 +9,13 @@ vi.mock("@/store/apiSlice", async () => {
   return {
     apiSlice: makeApi({
       reducerPath: "api",
+      tagTypes: [
+        "ConsolidatedReport",
+        "Party",
+        "PartyStatement",
+        "DepartmentBalance",
+        "Account",
+      ],
       baseQuery: (a: unknown) => {
         requests.push(typeof a === "string" ? { url: a } : (a as R));
         return { data: { data: [] } };
@@ -23,6 +30,25 @@ let store: ReturnType<typeof configureStore>;
 const d = (a: unknown) =>
   (store.dispatch as unknown as (x: unknown) => Promise<unknown>)(a);
 describe("reportsApi", () => {
+  it("posts a confirmed department profit with its date range and expected value", async () => {
+    await d(
+      api.endpoints.postPartnerProfit.initiate({
+        departmentId: "d1",
+        startDate: "2026-09-01",
+        endDate: "2026-09-30",
+        expectedNetProfit: "-192788.00",
+      }),
+    );
+    expect(requests[0]).toMatchObject({
+      url: "/reports/partner-profit-share/d1/post",
+      method: "POST",
+      body: {
+        startDate: "2026-09-01",
+        endDate: "2026-09-30",
+        expectedNetProfit: "-192788.00",
+      },
+    });
+  });
   beforeAll(async () => {
     api = (await import("./reportsApi")).reportsApi;
     store = configureStore({

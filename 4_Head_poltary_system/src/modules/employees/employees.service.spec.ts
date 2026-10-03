@@ -3,6 +3,7 @@ import { LedgerService } from '../ledger/ledger.service';
 import { EmployeesRepository } from './employees.repository';
 import { EmployeesService } from './employees.service';
 import { EmployeeAdvance } from './entities/employee-advance.entity';
+import { EmployeeBonus } from './entities/employee-bonus.entity';
 import { Employee } from './entities/employee.entity';
 import { SalaryRun } from './entities/salary-run.entity';
 import { SalaryWithdrawal } from './entities/salary-withdrawal.entity';
@@ -53,6 +54,13 @@ describe('EmployeesService accounting', () => {
   const repository = {} as jest.Mocked<EmployeesRepository>;
   const manager = {
     findOne: jest.fn(),
+    query: jest
+      .fn()
+      .mockImplementation(async (sql: string) =>
+        sql.includes('FOR UPDATE')
+          ? [{ opening_balance: '1000.00' }]
+          : [{ balance: '0.00' }],
+      ),
     findOneOrFail: jest.fn(),
     create: jest.fn(),
     save: jest.fn(),
@@ -259,6 +267,13 @@ describe('EmployeesService salary account withdrawals', () => {
       create: jest.fn((value) => value),
     };
     const manager = {
+      query: jest
+        .fn()
+        .mockImplementation(async (sql: string) =>
+          sql.includes('FOR UPDATE')
+            ? [{ opening_balance: '10000.00' }]
+            : [{ balance: '0.00' }],
+        ),
       findOne: jest.fn(async (entity) =>
         entity === Employee
           ? { id: 'employee-1', departmentId: 'department-1' }
@@ -266,6 +281,7 @@ describe('EmployeesService salary account withdrawals', () => {
       ),
       getRepository: jest.fn((entity) => {
         if (entity === SalaryRun) return runRepository;
+        if (entity === EmployeeBonus) return { find: jest.fn(async () => []) };
         if (entity === SalaryWithdrawal) return withdrawalRepository;
         if (entity === SalaryWithdrawalAllocation) return allocationRepository;
         throw new Error('Unexpected repository');

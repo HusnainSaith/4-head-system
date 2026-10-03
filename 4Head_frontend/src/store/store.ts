@@ -1,3 +1,4 @@
+import { setupListeners } from "@reduxjs/toolkit/query";
 import { configureStore } from "@reduxjs/toolkit";
 import authReducer from "@/features/auth/authSlice";
 import { apiSlice } from "@/store/apiSlice";
@@ -15,3 +16,5 @@ export const store = configureStore({
 export type AppStore = typeof store;
 export type RootState = ReturnType<AppStore["getState"]>;
 export type AppDispatch = AppStore["dispatch"];
+
+setupListeners(store.dispatch);

@@ -106,6 +106,37 @@ export class EmployeesController {
     );
   }
 
+  @Patch('employees/:employeeId/advances/:advanceId')
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  updateAdvance(
+    @Param('employeeId') employeeId: string,
+    @Param('advanceId') advanceId: string,
+    @Body() dto: CreateAdvanceDto,
+    @Req() req: Request,
+  ) {
+    return this.employeesService.changeAdvance(
+      employeeId,
+      advanceId,
+      dto,
+      (req as any).user.id,
+    );
+  }
+
+  @Delete('employees/:employeeId/advances/:advanceId')
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  deleteAdvance(
+    @Param('employeeId') employeeId: string,
+    @Param('advanceId') advanceId: string,
+    @Req() req: Request,
+  ) {
+    return this.employeesService.changeAdvance(
+      employeeId,
+      advanceId,
+      null,
+      (req as any).user.id,
+    );
+  }
+
   @Post('employees/:employeeId/advances/:advanceId/confirm')
   @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
   @ApiOperation({ summary: 'Confirm and disburse an employee advance' })
@@ -140,6 +171,51 @@ export class EmployeesController {
     return this.employeesService.createBonus(
       employeeId,
       dto,
+      (req as any).user.id,
+    );
+  }
+
+  @Patch('employees/:employeeId/bonuses/:bonusId')
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  updateBonus(
+    @Param('employeeId') employeeId: string,
+    @Param('bonusId') bonusId: string,
+    @Body() dto: CreateBonusDto,
+    @Req() req: Request,
+  ) {
+    return this.employeesService.changeBonus(
+      employeeId,
+      bonusId,
+      dto,
+      (req as any).user.id,
+    );
+  }
+
+  @Delete('employees/:employeeId/bonuses/:bonusId')
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  deleteBonus(
+    @Param('employeeId') employeeId: string,
+    @Param('bonusId') bonusId: string,
+    @Req() req: Request,
+  ) {
+    return this.employeesService.changeBonus(
+      employeeId,
+      bonusId,
+      null,
+      (req as any).user.id,
+    );
+  }
+
+  @Post('employees/:id/payroll/:runId/cancel')
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  cancelPayroll(
+    @Param('id') employeeId: string,
+    @Param('runId') runId: string,
+    @Req() req: Request,
+  ) {
+    return this.employeesService.cancelPayroll(
+      employeeId,
+      runId,
       (req as any).user.id,
     );
   }
@@ -195,6 +271,37 @@ export class EmployeesController {
   @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
   getSalaryAccount(@Param('id') employeeId: string) {
     return this.employeesService.getSalaryAccount(employeeId);
+  }
+
+  @Patch('employees/:id/salary-account/withdrawals/:withdrawalId')
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  updateSalaryWithdrawal(
+    @Param('id') employeeId: string,
+    @Param('withdrawalId') withdrawalId: string,
+    @Body() dto: CreateSalaryWithdrawalDto,
+    @Req() req: Request,
+  ) {
+    return this.employeesService.changeSalaryWithdrawal(
+      employeeId,
+      withdrawalId,
+      dto,
+      (req as any).user.id,
+    );
+  }
+
+  @Delete('employees/:id/salary-account/withdrawals/:withdrawalId')
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  deleteSalaryWithdrawal(
+    @Param('id') employeeId: string,
+    @Param('withdrawalId') withdrawalId: string,
+    @Req() req: Request,
+  ) {
+    return this.employeesService.changeSalaryWithdrawal(
+      employeeId,
+      withdrawalId,
+      null,
+      (req as any).user.id,
+    );
   }
 
   @Post('employees/:id/salary-account/withdrawals')

@@ -6,6 +6,9 @@ const mockRecordPayment = vi.fn();
 const mockGetBalances = vi.fn();
 
 vi.mock("@/features/parties/partiesApi", () => ({
+  useListDepartmentPaymentsQuery: () => ({
+    data: { data: { items: [], pagination: { total: 0 } } },
+  }),
   useGetDepartmentBalancesQuery: (...args: unknown[]) =>
     mockGetBalances(...args),
   useRecordPartyPaymentMutation: () => [
@@ -15,7 +18,9 @@ vi.mock("@/features/parties/partiesApi", () => ({
 }));
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("@/features/accounts/components", () => ({ PaymentAccountFields: () => null }));
+vi.mock("@/features/accounts/components", () => ({
+  PaymentAccountFields: () => null,
+}));
 
 import { DepartmentBalancesPanel } from "./DepartmentBalancesPanel";
 
@@ -115,14 +120,22 @@ describe("DepartmentBalancesPanel", () => {
     await user.click(screen.getByRole("button", { name: /record payment/i }));
     expect(screen.getByLabelText(/search party/i)).toBeInTheDocument();
     await user.click(screen.getAllByRole("combobox")[0]);
-    expect(screen.getByRole("option", { name: /zero balance party/i })).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /test supplier/i })).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /zero balance party/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /test supplier/i }),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("option", { name: /test supplier/i }));
     await user.type(screen.getByLabelText(/search party/i), "buyer");
     await user.click(screen.getAllByRole("combobox")[0]);
-    expect(screen.getByRole("option", { name: /test buyer/i })).toBeInTheDocument();
-    expect(screen.queryByRole("option", { name: /test supplier/i })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("option", { name: /test buyer/i }),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: /test supplier/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a negative party in the payment form and records an advance", async () => {
@@ -130,12 +143,18 @@ describe("DepartmentBalancesPanel", () => {
       unwrap: () => Promise.resolve({ success: true }),
     });
     const user = userEvent.setup();
-    render(<DepartmentBalancesPanel departmentCode={DepartmentCode.BROKERAGE} />);
+    render(
+      <DepartmentBalancesPanel departmentCode={DepartmentCode.BROKERAGE} />,
+    );
 
     await user.click(screen.getByRole("button", { name: /record payment/i }));
     await user.click(screen.getAllByRole("combobox")[0]);
-    await user.click(await screen.findByRole("option", { name: /test buyer/i }));
-    expect(screen.getByText(/additional payment\/advance/i)).toBeInTheDocument();
+    await user.click(
+      await screen.findByRole("option", { name: /test buyer/i }),
+    );
+    expect(
+      screen.getByText(/additional payment\/advance/i),
+    ).toBeInTheDocument();
     await user.type(screen.getByRole("spinbutton", { name: /amount/i }), "400");
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
@@ -183,10 +202,17 @@ describe("DepartmentBalancesPanel", () => {
 
     await user.click(screen.getByRole("button", { name: /record receipt/i }));
     await user.click(screen.getAllByRole("combobox")[0]);
-    await user.click(await screen.findByRole("option", { name: /test supplier/i }));
-    await user.type(screen.getByRole("spinbutton", { name: /amount/i }), "1000");
+    await user.click(
+      await screen.findByRole("option", { name: /test supplier/i }),
+    );
+    await user.type(
+      screen.getByRole("spinbutton", { name: /amount/i }),
+      "1000",
+    );
 
-    expect(screen.getByText(/payable balance will increase/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/payable balance will increase/i),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
@@ -207,11 +233,15 @@ describe("DepartmentBalancesPanel", () => {
 
     await user.click(screen.getByRole("button", { name: /record receipt/i }));
     await user.click(screen.getAllByRole("combobox")[0]);
-    await user.click(await screen.findByRole("option", { name: /test buyer/i }));
+    await user.click(
+      await screen.findByRole("option", { name: /test buyer/i }),
+    );
     await user.type(screen.getByRole("spinbutton", { name: /amount/i }), "420");
 
     // Test Buyer has balance -350 (receivable), 420 > 350 so the advance hint appears
-    expect(screen.getByText(/clears the payable balance|advance credit/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/clears the payable balance|advance credit/i),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
@@ -223,7 +253,10 @@ describe("DepartmentBalancesPanel", () => {
     );
   });
 
-  it("prevents a paid amount larger than the outstanding balance", async () => {
+  it("records a payment overage as an advance", async () => {
+    mockRecordPayment.mockReturnValue({
+      unwrap: () => Promise.resolve({ success: true }),
+    });
     const user = userEvent.setup();
     render(<DepartmentBalancesPanel departmentCode={DepartmentCode.WASTAGE} />);
 
@@ -235,9 +268,12 @@ describe("DepartmentBalancesPanel", () => {
     await user.type(screen.getByRole("spinbutton", { name: /amount/i }), "601");
     await user.click(screen.getByRole("button", { name: /^save$/i }));
 
-    const amountInput = screen.getByRole("spinbutton", { name: /amount/i });
-    expect(amountInput).toHaveAttribute("max", "600");
-    expect(amountInput).toBeInvalid();
-    expect(mockRecordPayment).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(mockRecordPayment).toHaveBeenCalledWith(
+        expect.objectContaining({
+          body: expect.objectContaining({ amount: 601, direction: "paid" }),
+        }),
+      ),
+    );
   });
 });

@@ -8,9 +8,16 @@ import { LedgerService } from '../ledger/ledger.service';
 import { InternalTransfer } from './entities/internal-transfer.entity';
 
 describe('SupplyService', () => {
-  const manager = {} as EntityManager;
+  const manager = {
+    update: jest.fn(),
+    getRepository: jest.fn(() => ({
+      find: jest.fn().mockResolvedValue([]),
+      save: jest.fn(),
+    })),
+  } as unknown as EntityManager;
   const repository = {
     findTransferById: jest.fn(),
+    findSaleById: jest.fn(),
     updateTransfer: jest.fn(),
     sumActivePurchaseQuantity: jest.fn().mockResolvedValue('100.000'),
     sumActiveSaleQuantity: jest.fn().mockResolvedValue('80.000'),
@@ -18,6 +25,7 @@ describe('SupplyService', () => {
     sumActiveSaleTotal: jest.fn().mockResolvedValue('1000.00'),
     sumActiveTransferTotal: jest.fn().mockResolvedValue('500.00'),
     sumActivePurchaseTotal: jest.fn().mockResolvedValue('900.00'),
+    sumShrinkageExpenses: jest.fn().mockResolvedValue('0.00'),
   };
   const ledger = { post: jest.fn(), sumByAccount: jest.fn() };
   const dataSource = {
@@ -25,7 +33,12 @@ describe('SupplyService', () => {
       work(manager),
     ),
   };
-  const inventory = { sumMovementQuantity: jest.fn().mockResolvedValue('10.000'), sumWriteoffQuantity: jest.fn().mockResolvedValue('1.000') };
+  const inventory = {
+    sumMovementQuantity: jest.fn().mockResolvedValue('10.000'),
+    sumWriteoffQuantity: jest.fn().mockResolvedValue('1.000'),
+    reverseSourceMovement: jest.fn(),
+    applySaleOut: jest.fn(),
+  };
   const service = new SupplyService(
     repository as unknown as SupplyRepository,
     {} as DepartmentsService,
@@ -41,6 +54,16 @@ describe('SupplyService', () => {
       shopDeptId: '00000000-0000-4000-8000-000000000002',
       shopInternalPartyId: '00000000-0000-4000-8000-000000000003',
     });
+  });
+  it('displays shrinkage in expenses without deducting it again from gross profit', async () => {
+    repository.sumActiveSaleTotal.mockResolvedValueOnce('1342740.00').mockResolvedValueOnce('1342740.00');
+    repository.sumActivePurchaseTotal.mockResolvedValueOnce('1311400.00').mockResolvedValueOnce('1311400.00');
+    repository.sumShrinkageExpenses.mockResolvedValueOnce('2730.00').mockResolvedValueOnce('2730.00');
+    ledger.sumByAccount.mockResolvedValueOnce('6640.00').mockResolvedValueOnce('0.00').mockResolvedValueOnce('6640.00').mockResolvedValueOnce('0.00');
+    const report = await service.getProfitLoss('2026-09-05', '2026-09-05');
+    expect(report.externalOnly).toEqual(expect.objectContaining({ grossProfit: '31340.00', operatingExpenses: '6640.00', shrinkageExpenses: '2730.00', otherExpenses: '3910.00', netProfit: '27430.00' }));
+    expect(repository.sumShrinkageExpenses).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000001', '2026-09-05', '2026-09-05');
+    expect(report.includingInternalTransfers.netProfit).toBe('27930.00');
   });
 
   it('settles a transfer under a row lock and returns authoritative balances', async () => {
@@ -102,6 +125,50 @@ describe('SupplyService', () => {
         '00000000-0000-4000-8000-000000000099',
       ),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('reverses the old stock movement before applying the updated sale quantity', async () => {
+    const sale = {
+      id: 'sale-1',
+      quantityKg: '62.900',
+      ratePerKg: '150.00',
+      amountReceived: '0.00',
+      outstandingAmount: '0.00',
+      saleDate: new Date('2026-09-20'),
+      status: 'posted',
+    };
+    repository.findSaleById.mockResolvedValueOnce(sale).mockResolvedValueOnce({
+      ...sale,
+      quantityKg: '52.900',
+      ratePerKg: '150.00',
+      totalAmount: '7935.00',
+      amountReceived: '0.00',
+      outstandingAmount: '7935.00',
+    });
+    inventory.reverseSourceMovement.mockResolvedValue(undefined);
+    inventory.applySaleOut.mockResolvedValue({ currentWac: 120 });
+
+    await service.updateSale('sale-1', {
+      saleDate: '2026-09-21',
+      quantityKg: 52.9,
+      ratePerKg: 150,
+      amountReceived: 0,
+    });
+
+    expect(inventory.reverseSourceMovement).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+      'sale',
+      'sale-1',
+      manager,
+    );
+    expect(inventory.applySaleOut).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+      52.9,
+      'sale',
+      'sale-1',
+      new Date('2026-09-21'),
+      manager,
+    );
   });
 
   it('returns separate external-only and including-transfer report views', async () => {

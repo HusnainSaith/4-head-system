@@ -21,6 +21,22 @@ import type {
 
 export const partiesApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
+    listDepartmentPayments: builder.query<
+      ApiResponse<{
+        items: import("./types").DepartmentPayment[];
+        pagination: { page: number; limit: number; total: number };
+      }>,
+      {
+        departmentId: string;
+        page: number;
+        limit: number;
+        from?: string;
+        to?: string;
+      }
+    >({
+      query: (params) => ({ url: "/parties/payments/all", params }),
+      providesTags: [{ type: "DepartmentBalance", id: "LIST" }],
+    }),
     listParties: builder.query<PartiesResponse, ListPartiesParams | void>({
       query: (params) => ({
         url: "/parties",
@@ -129,6 +145,26 @@ export const partiesApi = apiSlice.injectEndpoints({
         { type: "DepartmentBalance", id: "LIST" },
       ],
     }),
+    deletePartyPayment: builder.mutation<
+      ApiResponse<null>,
+      { id: string; paymentId: string }
+    >({
+      query: ({ id, paymentId }) => ({
+        url: `/parties/${id}/payments/${paymentId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_result, _error, { id }) => [
+        { type: "Party", id },
+        { type: "PartyStatement", id },
+        { type: "DepartmentBalance", id: "LIST" },
+        { type: "Account", id: "CASH" },
+        { type: "Account", id: "BANK" },
+        { type: "Account", id: "SUMMARY" },
+        { type: "BrokerageReport", id: "PROFIT_LOSS" },
+        { type: "SupplyReport", id: "PROFIT_LOSS" },
+        { type: "ConsolidatedReport", id: "PROFIT_LOSS" },
+      ],
+    }),
     getDepartmentBalances: builder.query<
       ApiResponse<DepartmentBalances>,
       string
@@ -198,7 +234,10 @@ export const partiesApi = apiSlice.injectEndpoints({
         { type: "Party", id: "LIST" },
         { type: "Party", id: "SETTLEMENTS" },
         { type: "PartyStatement", id: result?.data.payablePartyId ?? "LIST" },
-        { type: "PartyStatement", id: result?.data.receivablePartyId ?? "LIST" },
+        {
+          type: "PartyStatement",
+          id: result?.data.receivablePartyId ?? "LIST",
+        },
         { type: "DepartmentBalance", id: "LIST" },
       ],
     }),
@@ -263,6 +302,7 @@ export const partiesApi = apiSlice.injectEndpoints({
 });
 
 export const {
+  useListDepartmentPaymentsQuery,
   useListPartiesQuery,
   useGetPartyQuery,
   useCreatePartyMutation,
@@ -272,6 +312,7 @@ export const {
   useGetPartyStatementQuery,
   useRecordPartyPaymentMutation,
   useUpdatePartyPaymentMutation,
+  useDeletePartyPaymentMutation,
   useGetDepartmentBalancesQuery,
   useCreatePartySettlementMutation,
   useListPartySettlementsQuery,

@@ -30,6 +30,7 @@ vi.mock("@/features/parties/partiesApi", () => ({
     vi.fn(),
     { isLoading: false },
   ]),
+  useDeletePartyPaymentMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
   useRecordPartyPaymentMutation: vi.fn(() => [
     mockRecordPayment,
     { isLoading: false },
@@ -192,6 +193,15 @@ describe("PartyStatementPage", () => {
     );
     expect(printWindow.print).toHaveBeenCalled();
     vi.restoreAllMocks();
+  });
+
+  it.each(["sale", "purchase", "payment"] as const)("shows the admin's saved %s note separately from the type", (sourceType) => {
+    setupSuccessfulQueries([makeEntry({ sourceType, description: "Admin's exact message\nSecond line" })]);
+    renderPage();
+    expect(screen.getByRole("columnheader", { name: "Notes" })).toBeInTheDocument();
+    const note = screen.getByText("Admin's exact message Second line");
+    expect(note.textContent).toBe("Admin's exact message\nSecond line");
+    expect(note).toHaveClass("whitespace-pre-wrap");
   });
 
   it("renders statement entry rows", () => {

@@ -4,13 +4,17 @@ import {
   Column,
   ManyToOne,
   JoinColumn,
-  Unique,
+  Index,
 } from 'typeorm';
 import { AuditBaseEntity } from '../../../common/entities/audit-base.entity';
 import { Employee } from './employee.entity';
 
 @Entity('salary_runs')
-@Unique(['employeeId', 'periodMonth', 'periodYear'])
+@Index(
+  'salary_runs_active_period_unique',
+  ['employeeId', 'periodMonth', 'periodYear'],
+  { unique: true, where: 'deleted_at IS NULL' },
+)
 export class SalaryRun extends AuditBaseEntity {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -49,6 +53,23 @@ export class SalaryRun extends AuditBaseEntity {
   })
   totalAdvancesDeducted: string;
 
+  @Column({
+    name: 'manual_deduction',
+    type: 'decimal',
+    precision: 14,
+    scale: 2,
+    default: '0',
+  })
+  manualDeduction: string;
+
+  @Column({
+    name: 'deduction_reason',
+    type: 'varchar',
+    length: 255,
+    nullable: true,
+  })
+  deductionReason?: string;
+
   @Column({ name: 'net_payable', type: 'decimal', precision: 14, scale: 2 })
   netPayable: string;
 
@@ -70,7 +91,7 @@ export class SalaryRun extends AuditBaseEntity {
   amountPaid: string;
 
   @Column({ name: 'paid_date', type: 'date', nullable: true })
-  paidDate?: Date;
+  paidDate?: Date | null;
 
   @Column({
     name: 'payment_method',
@@ -78,7 +99,7 @@ export class SalaryRun extends AuditBaseEntity {
     enum: ['cash', 'bank'],
     nullable: true,
   })
-  paymentMethod?: 'cash' | 'bank';
+  paymentMethod?: 'cash' | 'bank' | null;
 
   @Column({ name: 'cash_account_id', type: 'uuid', nullable: true })
   cashAccountId?: string;

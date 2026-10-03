@@ -8,6 +8,22 @@ describe('InventoryRepository', () => {
   const movementRepo = {} as Repository<any>;
   const writeoffRepo = {} as Repository<any>;
 
+  it('locks an existing balance without clearing any department stock', async () => {
+    const balance = { quantityKg: '122.300', wac: '296.0000' };
+    const balanceRepo = { findOne: jest.fn().mockResolvedValue(balance) };
+    const manager = {
+      getRepository: jest.fn().mockReturnValue(balanceRepo),
+      clear: jest.fn(),
+    };
+    const repository = new InventoryRepository({} as any, movementRepo, writeoffRepo);
+    await expect(repository.getBalance('supply', manager as any)).resolves.toBe(balance);
+    expect(manager.clear).not.toHaveBeenCalled();
+    expect(balanceRepo.findOne).toHaveBeenCalledWith({
+      where: { departmentId: 'supply', stockType: StockType.STANDARD },
+      lock: { mode: 'pessimistic_write' },
+    });
+  });
+
   it('returns an existing stock balance without changing it', async () => {
     const balance = {
       departmentId: 'department-1',

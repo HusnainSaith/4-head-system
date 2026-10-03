@@ -43,7 +43,8 @@ export function SalaryRunDetailPage() {
   const [pay, state] = useMarkSalaryRunPaidMutation();
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState<"cash" | "bank">("cash");
-  const [accountSelection, setAccountSelection] = useState<PaymentAccountSelection>({});
+  const [accountSelection, setAccountSelection] =
+    useState<PaymentAccountSelection>({});
   if (query.isLoading) return <PageSkeleton rows={4} />;
   if (query.isError || !query.data)
     return (
@@ -103,11 +104,18 @@ export function SalaryRunDetailPage() {
             </span>
             <span>-{money.format(Number(run.totalAdvancesDeducted))}</span>
           </div>
+          <div className="flex justify-between">
+            <span>
+              Leave charges / fine
+              {run.deductionReason ? ": " + run.deductionReason : ""}
+            </span>
+            <span>-{money.format(Number(run.manualDeduction ?? 0))}</span>
+          </div>
           <div className="flex justify-between border-t pt-2 text-lg font-semibold">
             <span>Net payable</span>
             <span>{money.format(Number(run.netPayable))}</span>
           </div>
-          {run.paymentStatus === "pending" ? (
+          {run.paymentStatus !== "paid" ? (
             <Button onClick={() => setOpen(true)}>Mark as Paid</Button>
           ) : (
             <p>
@@ -134,7 +142,10 @@ export function SalaryRunDetailPage() {
             <Label>Payment method</Label>
             <Select
               value={method}
-              onValueChange={(v) => { setMethod(v as "cash" | "bank"); setAccountSelection({}); }}
+              onValueChange={(v) => {
+                setMethod(v as "cash" | "bank");
+                setAccountSelection({});
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -145,7 +156,12 @@ export function SalaryRunDetailPage() {
               </SelectContent>
             </Select>
           </div>
-          <PaymentAccountFields paymentMethod={method} value={accountSelection} onChange={setAccountSelection} departmentId={run.employee.departmentId} />
+          <PaymentAccountFields
+            paymentMethod={method}
+            value={accountSelection}
+            onChange={setAccountSelection}
+            departmentId={run.employee.departmentId}
+          />
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
@@ -156,7 +172,11 @@ export function SalaryRunDetailPage() {
                 try {
                   await pay({
                     id,
-                    body: { paidDate: date, paymentMethod: method, ...accountSelection },
+                    body: {
+                      paidDate: date,
+                      paymentMethod: method,
+                      ...accountSelection,
+                    },
                   }).unwrap();
                   toast.success("Salary marked as paid");
                   setOpen(false);

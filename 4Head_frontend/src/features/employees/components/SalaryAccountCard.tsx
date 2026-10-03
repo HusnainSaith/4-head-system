@@ -24,22 +24,33 @@ import {
 import { getApiErrorMessage } from "@/lib/api-error";
 import {
   useGetSalaryAccountQuery,
+  useCancelPayrollMutation,
   useWithdrawSalaryMutation,
+  useUpdateSalaryWithdrawalMutation,
+  useDeleteSalaryWithdrawalMutation,
 } from "../employeesApi";
-import type { SalaryRun } from "../types";
+import type { SalaryRun, SalaryWithdrawal } from "../types";
 const money = new Intl.NumberFormat("en-PK", {
   style: "currency",
   currency: "PKR",
 });
 
 export function SalaryAccountCard({ employeeId }: { employeeId: string }) {
+  const [cancelPayroll, cancelState] = useCancelPayrollMutation();
+  const [cancelling, setCancelling] = useState<SalaryRun | null>(null);
   const query = useGetSalaryAccountQuery(employeeId);
   const [withdraw, state] = useWithdrawSalaryMutation();
+  const [updateWithdrawal, updateState] = useUpdateSalaryWithdrawalMutation();
+  const [deleteWithdrawal, deleteState] = useDeleteSalaryWithdrawalMutation();
+  const [editing, setEditing] = useState<SalaryWithdrawal | null>(null);
+  const [deleting, setDeleting] = useState<SalaryWithdrawal | null>(null);
+  const [notes, setNotes] = useState("");
   const [open, setOpen] = useState(false);
   const [amount, setAmount] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState<"cash" | "bank">("cash");
-  const [accountSelection, setAccountSelection] = useState<PaymentAccountSelection>({});
+  const [accountSelection, setAccountSelection] =
+    useState<PaymentAccountSelection>({});
   const account = query.data?.data;
   const columns: DataTableColumn<SalaryRun>[] = [
     {
@@ -67,8 +78,72 @@ export function SalaryAccountCard({ employeeId }: { employeeId: string }) {
       align: "right",
     },
   ];
+  columns.push({
+    id: "actions",
+    header: "Actions",
+    cell: (row) => (
+      <Button
+        size="sm"
+        variant="destructive"
+        onClick={() => setCancelling(row)}
+      >
+        Cancel payroll
+      </Button>
+    ),
+  });
+  const withdrawalColumns: DataTableColumn<SalaryWithdrawal>[] = [
+    {
+      id: "date",
+      header: "Withdrawal date",
+      cell: (row) => String(row.withdrawalDate).slice(0, 10),
+    },
+    {
+      id: "amount",
+      header: "Amount",
+      cell: (row) => money.format(Number(row.amount)),
+    },
+    { id: "method", header: "Method", cell: (row) => row.paymentMethod },
+    { id: "notes", header: "Notes", cell: (row) => row.notes || "—" },
+    {
+      id: "actions",
+      header: "Actions",
+      cell: (row) => (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setEditing(row);
+              setAmount(row.amount);
+              setDate(String(row.withdrawalDate).slice(0, 10));
+              setMethod(row.paymentMethod);
+              setNotes(row.notes ?? "");
+              setAccountSelection({
+                cashAccountId: row.cashAccountId ?? undefined,
+                bankAccountId: row.bankAccountId ?? undefined,
+                bankTransactionMethod: row.bankTransactionMethod ?? undefined,
+                chequeNumber: row.chequeNumber ?? undefined,
+                appReference: row.appReference ?? undefined,
+              });
+              setOpen(true);
+            }}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => setDeleting(row)}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
+    },
+  ];
   if (!account) return null;
   const available = Number(account.availableBalance);
+  const editableAvailable = available + Number(editing?.amount ?? 0);
   return (
     <>
       <Card>
@@ -80,7 +155,18 @@ export function SalaryAccountCard({ employeeId }: { employeeId: string }) {
               oldest month first.
             </p>
           </div>
-          <Button disabled={available <= 0} onClick={() => setOpen(true)}>
+          <Button
+            disabled={available <= 0}
+            onClick={() => {
+              setEditing(null);
+              setAmount("");
+              setDate(new Date().toISOString().slice(0, 10));
+              setMethod("cash");
+              setAccountSelection({});
+              setNotes("");
+              setOpen(true);
+            }}
+          >
             Withdraw salary
           </Button>
         </CardHeader>
@@ -98,28 +184,38 @@ export function SalaryAccountCard({ employeeId }: { employeeId: string }) {
             data={account.runs}
             getRowId={(row) => row.id}
           />
+          <h3 className="font-medium">Withdrawal history</h3>
+          <DataTable
+            columns={withdrawalColumns}
+            data={account.withdrawals ?? []}
+            getRowId={(row) => row.id}
+          />
         </CardContent>
       </Card>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Withdraw accrued salary</DialogTitle>
+            <DialogTitle>
+              {editing ? "Edit salary withdrawal" : "Withdraw accrued salary"}
+            </DialogTitle>
           </DialogHeader>
-          <p>Available: {money.format(available)}</p>
+          <p>Available: {money.format(editableAvailable)}</p>
           <div>
-            <Label>Amount</Label>
+            <Label htmlFor="withdrawal-amount">Amount</Label>
             <Input
+              id="withdrawal-amount"
               type="number"
               min="0.01"
-              max={available}
+              max={editableAvailable}
               step="0.01"
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
             />
           </div>
           <div>
-            <Label>Date</Label>
+            <Label htmlFor="withdrawal-date">Date</Label>
             <Input
+              id="withdrawal-date"
               type="date"
               value={date}
               onChange={(event) => setDate(event.target.value)}
@@ -129,7 +225,10 @@ export function SalaryAccountCard({ employeeId }: { employeeId: string }) {
             <Label>Method</Label>
             <Select
               value={method}
-              onValueChange={(value) => { setMethod(value as "cash" | "bank"); setAccountSelection({}); }}
+              onValueChange={(value) => {
+                setMethod(value as "cash" | "bank");
+                setAccountSelection({});
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -140,30 +239,56 @@ export function SalaryAccountCard({ employeeId }: { employeeId: string }) {
               </SelectContent>
             </Select>
           </div>
-          <PaymentAccountFields paymentMethod={method} value={accountSelection} onChange={setAccountSelection} />
+          <PaymentAccountFields
+            paymentMethod={method}
+            value={accountSelection}
+            onChange={setAccountSelection}
+          />
+          <div>
+            <Label htmlFor="withdrawal-notes">Notes (optional)</Label>
+            <Input
+              id="withdrawal-notes"
+              value={notes}
+              maxLength={255}
+              onChange={(event) => setNotes(event.target.value)}
+            />
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
             <Button
-              isLoading={state.isLoading}
+              isLoading={state.isLoading || updateState.isLoading}
               onClick={async () => {
                 const value = Number(amount);
-                if (!Number.isFinite(value) || value <= 0 || value > available)
+                if (
+                  !Number.isFinite(value) ||
+                  value <= 0 ||
+                  value > editableAvailable
+                )
                   return toast.error(
                     "Enter an amount within the available balance",
                   );
                 try {
-                  await withdraw({
-                    employeeId,
-                    body: {
-                      amount: value,
-                      withdrawalDate: date,
-                      paymentMethod: method,
-                      ...accountSelection,
-                    },
-                  }).unwrap();
-                  toast.success("Salary withdrawal recorded");
+                  const body = {
+                    amount: value,
+                    withdrawalDate: date,
+                    paymentMethod: method,
+                    ...accountSelection,
+                    notes,
+                  };
+                  if (editing)
+                    await updateWithdrawal({
+                      employeeId,
+                      withdrawalId: editing.id,
+                      body,
+                    }).unwrap();
+                  else await withdraw({ employeeId, body }).unwrap();
+                  toast.success(
+                    editing
+                      ? "Salary withdrawal updated"
+                      : "Salary withdrawal recorded",
+                  );
                   setOpen(false);
                   setAmount("");
                 } catch (error) {
@@ -171,7 +296,84 @@ export function SalaryAccountCard({ employeeId }: { employeeId: string }) {
                 }
               }}
             >
-              Confirm withdrawal
+              {editing ? "Save changes" : "Confirm withdrawal"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(deleting)}
+        onOpenChange={(value) => !value && setDeleting(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete salary withdrawal</DialogTitle>
+          </DialogHeader>
+          <p>
+            This will return the payment to its original cash or bank account
+            and restore the employee's available salary balance.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleting(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              isLoading={deleteState.isLoading}
+              onClick={async () => {
+                if (!deleting) return;
+                try {
+                  await deleteWithdrawal({
+                    employeeId,
+                    withdrawalId: deleting.id,
+                  }).unwrap();
+                  toast.success("Salary withdrawal deleted and refunded");
+                  setDeleting(null);
+                } catch (error) {
+                  toast.error(getApiErrorMessage(error));
+                }
+              }}
+            >
+              Delete withdrawal
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(cancelling)}
+        onOpenChange={(open) => !open && setCancelling(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel payroll</DialogTitle>
+          </DialogHeader>
+          <p>
+            Cancel payroll for {cancelling?.periodMonth}/
+            {cancelling?.periodYear}? This reverses the salary credit and
+            refunds any payment allocated to this month to its original account.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCancelling(null)}>
+              Keep payroll
+            </Button>
+            <Button
+              variant="destructive"
+              isLoading={cancelState.isLoading}
+              onClick={async () => {
+                if (!cancelling) return;
+                try {
+                  await cancelPayroll({
+                    employeeId,
+                    runId: cancelling.id,
+                  }).unwrap();
+                  toast.success("Payroll cancelled");
+                  setCancelling(null);
+                } catch (error) {
+                  toast.error(getApiErrorMessage(error));
+                }
+              }}
+            >
+              Confirm cancellation
             </Button>
           </DialogFooter>
         </DialogContent>

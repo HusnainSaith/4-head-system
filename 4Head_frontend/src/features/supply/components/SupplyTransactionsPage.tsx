@@ -1,3 +1,4 @@
+import { notesColumn } from "@/components/common/TransactionNotes";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useSelector } from "react-redux";
@@ -35,6 +36,7 @@ import {
   selectUserRole,
 } from "@/features/auth/authSlice";
 import { useListPartiesQuery } from "@/features/parties/partiesApi";
+import { PartyType } from "@/features/parties/types";
 import { useListDepartmentsQuery } from "@/features/departments/departmentsApi";
 import { DepartmentBalancesPanel } from "@/features/parties/components/DepartmentBalancesPanel";
 import { DepartmentVehicleSelect } from "@/features/vehicles/components/DepartmentVehicleSelect";
@@ -113,6 +115,7 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
     SupplyPurchase | SupplySale
   >;
   const columns: DataTableColumn<SupplyPurchase | SupplySale>[] = [
+    notesColumn(),
     {
       id: "party",
       header: kind === "purchase" ? "Broker" : "Shop owner",
@@ -414,7 +417,12 @@ function TransactionDialog({
   const departments = useListDepartmentsQuery(undefined, { skip: !open });
   const supplyDeptId = departments.data?.data.find((d) => d.type === "SUPPLY")?.id;
   const parties = useListPartiesQuery(
-    { departmentId: supplyDeptId, search: isAdmin ? partySearch || undefined : undefined, limit: isAdmin ? 50 : 200 },
+    {
+      departmentId: supplyDeptId,
+      type: kind === "purchase" ? PartyType.BROKER : undefined,
+      search: isAdmin ? partySearch || undefined : undefined,
+      limit: isAdmin ? 50 : 200,
+    },
     { skip: !open || !supplyDeptId },
   );
   const [partyId, setPartyId] = useState("");
@@ -518,7 +526,7 @@ function TransactionDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">None</SelectItem>
-                {(parties.data?.data.items ?? []).map((p) => (
+                {(parties.currentData?.data.items ?? []).map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.name}
                   </SelectItem>

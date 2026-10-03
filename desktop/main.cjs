@@ -1,12 +1,15 @@
 const { app, BrowserWindow, dialog } = require("electron");
-const { fork } = require("node:child_process");
+const { fork, execFile } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const net = require("node:net");
 const path = require("node:path");
+const { registerZoomShortcuts } = require("./zoom-shortcuts.cjs");
 
 let database;
+let databaseControlBinary;
+let databaseDirectory;
 let backend;
 let mainWindow;
 let isQuitting = false;
@@ -23,13 +26,17 @@ function formatError(error) {
   }
 }
 
+let logStream;
 function log(message) {
-  const logDir = app.getPath("userData");
-  fs.mkdirSync(logDir, { recursive: true });
-  fs.appendFileSync(
-    path.join(logDir, "4head-desktop.log"),
-    `${new Date().toISOString()} ${message}\n`,
-  );
+  if (!logStream) {
+    const logDir = app.getPath('userData');
+    fs.mkdirSync(logDir, { recursive: true });
+    const logPath = path.join(logDir, '4head-desktop.log');
+    if (fs.existsSync(logPath) && fs.statSync(logPath).size > 20 * 1024 * 1024) fs.renameSync(logPath, logPath + '.' + Date.now());
+    logStream = fs.createWriteStream(logPath, { flags: 'a' });
+    logStream.on('error', (error) => console.error('Desktop log error:', error.message));
+  }
+  logStream.write(new Date().toISOString() + ' ' + message + '\n');
 }
 
 function reservePort() {
@@ -45,6 +52,8 @@ function reservePort() {
 }
 
 function prepareSnapshotUpgrade(databaseDir, backendDir) {
+  // Application updates must never replace an existing business database.
+  if (fs.existsSync(path.join(databaseDir, "PG_VERSION"))) return null;
   const manifestPath = path.join(
     backendDir,
     "initial-database-manifest.json",
@@ -61,10 +70,16 @@ function prepareSnapshotUpgrade(databaseDir, backendDir) {
     return null;
   }
   if (state?.generation === generation && state?.status === "upgrading") {
-    return { generation, statePath, manifest };
+    return { generation, statePath, manifest, backupDir: state.backupDir };
   }
 
   let backupDir = null;
+  if (fs.existsSync(path.join(databaseDir, "postmaster.pid"))) {
+    const oldPid = Number(fs.readFileSync(path.join(databaseDir, "postmaster.pid"), "utf8").split(/\r?\n/)[0]);
+    let running = true;
+    try { process.kill(oldPid, 0); } catch (error) { if (error.code === "ESRCH") running = false; }
+    if (running) throw new Error("The desktop database may still be running. Close the old desktop application before upgrading.");
+  }
   if (fs.existsSync(path.join(databaseDir, "PG_VERSION"))) {
     const backupRoot = path.join(app.getPath("userData"), "database-backups");
     fs.mkdirSync(backupRoot, { recursive: true });
@@ -97,10 +112,12 @@ function waitForBackend(url, child) {
         );
         return;
       }
-      http
+      const request = http
         .get(url, (response) => {
           response.resume();
-          resolve();
+          if (response.statusCode >= 200 && response.statusCode < 400) resolve();
+          else if (Date.now() >= deadline) reject(new Error('Backend readiness check failed'));
+          else setTimeout(check, 300);
         })
         .on("error", () => {
           if (Date.now() >= deadline) {
@@ -109,6 +126,7 @@ function waitForBackend(url, child) {
             setTimeout(check, 300);
           }
         });
+      request.setTimeout(3000, () => request.destroy(new Error("Backend readiness request timed out")));
     };
     check();
   });
@@ -117,6 +135,7 @@ function waitForBackend(url, child) {
 async function startLocalServices() {
   log("[startup] Loading embedded PostgreSQL runtime");
   const EmbeddedPostgres = (await import("embedded-postgres")).default;
+  databaseControlBinary = (await import("@embedded-postgres/windows-x64")).pg_ctl;
   log("[startup] Embedded PostgreSQL runtime loaded");
   const databasePort = await reservePort();
   const applicationPort = await reservePort();
@@ -125,8 +144,16 @@ async function startLocalServices() {
     .update(`${app.getPath("userData")}:4head-local-db`)
     .digest("hex");
   const databaseDir = path.join(app.getPath("userData"), "postgres-data");
+  databaseDirectory = databaseDir;
   const backendDir = path.join(process.resourcesPath, "backend");
   pendingSnapshotState = prepareSnapshotUpgrade(databaseDir, backendDir);
+  if (fs.existsSync(path.join(databaseDir, 'PG_VERSION'))) {
+    const backupPath = path.join(app.getPath('userData'), 'database-backups', 'before-app-' + app.getVersion());
+    if (!fs.existsSync(backupPath)) {
+      fs.cpSync(databaseDir, backupPath, { recursive: true, filter: (file) => path.basename(file) !== 'postmaster.pid' });
+      log('[upgrade] Existing database backed up before application upgrade');
+    }
+  }
 
   database = new EmbeddedPostgres({
     databaseDir,
@@ -155,6 +182,13 @@ async function startLocalServices() {
     if (!String(error).toLowerCase().includes("already exists")) throw error;
   }
 
+  if (pendingSnapshotState) {
+    const initialUploads = path.join(backendDir, "initial-uploads");
+    if (fs.existsSync(initialUploads)) {
+      fs.cpSync(initialUploads, path.join(app.getPath("userData"), "uploads"), { recursive: true, force: false });
+    }
+  }
+
   const entry = path.join(backendDir, "dist", "src", "main.js");
   const jwtSecret = crypto
     .createHash("sha512")
@@ -180,9 +214,11 @@ async function startLocalServices() {
       FRONTEND_URLS: `http://127.0.0.1:${applicationPort}`,
       DESKTOP_FRONTEND_DIR: path.join(process.resourcesPath, "frontend"),
       UPLOAD_DIR: path.join(app.getPath("userData"), "uploads"),
-      DESKTOP_AUTO_MIGRATE: "true",
-      DESKTOP_AUTO_SEED: "true",
+      DESKTOP_AUTO_MIGRATE: pendingSnapshotState ? "true" : "false",
+      DESKTOP_SCHEMA_UPGRADE: "true",
+      DESKTOP_AUTO_SEED: pendingSnapshotState ? "true" : "false",
       NOTIFICATION_ENABLED: "false",
+      DISABLE_EMAIL_DELIVERY: "true",
       TYPEORM_LOGGING: "false",
     },
     stdio: ["ignore", "pipe", "pipe", "ipc"],
@@ -228,8 +264,23 @@ async function createWindow(url) {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      backgroundThrottling: false,
     },
   });
+  registerZoomShortcuts(mainWindow.webContents);
+  let recoveryPromptOpen = false;
+  let rendererUnresponsive = false;
+  mainWindow.on('responsive', () => { rendererUnresponsive = false; });
+  const offerRecovery = async (crashed = false) => {
+    if (recoveryPromptOpen || isQuitting) return;
+    recoveryPromptOpen = true;
+    try {
+      const result = await dialog.showMessageBox(mainWindow, { type: 'warning', title: '4Head needs attention', message: crashed ? 'The application page stopped unexpectedly.' : 'The application page is taking longer than expected.', detail: 'Wait to keep your current page, or reload the page. Saved database records are retained. Unsaved form changes may be lost on reload.', buttons: ['Wait', 'Reload page'], defaultId: 0, cancelId: 0 });
+      if (result.response === 1 && (crashed || rendererUnresponsive) && !mainWindow.isDestroyed()) mainWindow.webContents.reload();
+    } finally { recoveryPromptOpen = false; }
+  };
+  mainWindow.on('unresponsive', () => { rendererUnresponsive = true; log('[renderer] Unresponsive'); void offerRecovery(); });
+  mainWindow.webContents.on('render-process-gone', (_event, details) => { log('[renderer] Process ended: ' + details.reason); void offerRecovery(true); });
   mainWindow.once("ready-to-show", () => mainWindow.show());
   await mainWindow.loadURL(url);
 }
@@ -264,9 +315,17 @@ async function shutdown() {
     }
   }
   if (database) {
-    await database.stop().catch((error) => log(`[shutdown] ${String(error)}`));
+    try {
+      await new Promise((resolve, reject) => execFile(databaseControlBinary, ['stop', '-D', databaseDirectory, '-m', 'fast', '-w', '-t', '15'], { windowsHide: true, timeout: 20000 }, (error) => error ? reject(error) : resolve()));
+      database.process = undefined;
+      await database.stop();
+    } catch (error) {
+      log('[shutdown] Graceful database stop failed: ' + String(error));
+      await Promise.race([database.stop(), new Promise(resolve => setTimeout(resolve, 5000))]);
+    }
   }
   log("[shutdown] Local services stopped");
+  if (logStream) await new Promise(resolve => logStream.end(resolve));
 }
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
@@ -293,7 +352,7 @@ app.whenReady().then(async () => {
   try {
     log("[startup] Electron is ready");
     const url = await startLocalServices();
-    await createWindow(url);
+    if (process.env.FOURHEAD_TEST_SKIP_WINDOW !== "true") await createWindow(url);
     const testQuitDelay = Number(process.env.FOURHEAD_TEST_AUTO_QUIT_MS || 0);
     if (testQuitDelay > 0) {
       setTimeout(() => app.quit(), testQuitDelay);

@@ -140,6 +140,12 @@ export class SupplyController {
     return this.supplyService.getStock();
   }
 
+  @Get('stock/as-of')
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date e.g. 2021-09-21' })
+  getStockAsOf(@Query('date') date: string) {
+    return this.supplyService.getStockAsOf(date);
+  }
+
   @Post('stock/writeoffs')
   createWriteoff(
     @Body() dto: Partial<StockWriteoffDto>,

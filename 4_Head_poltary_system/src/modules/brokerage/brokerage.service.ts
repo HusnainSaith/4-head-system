@@ -33,6 +33,7 @@ import { publishBusinessDocument } from '../invoices/business-document.helper';
 import { resolveTransactionPayment } from '../ledger/transaction-payment.helper';
 import { SupplyPurchase } from '../supply/entities/supply-purchase.entity';
 import { Party } from '../parties/entities/party.entity';
+import { PartyTypeEnum } from '../../common/types/party-type.enum';
 import { paymentAccountLink } from '../accounts/dto/payment-account-selection.dto';
 import { Vehicle } from '../vehicles/entities/vehicle.entity';
 import {
@@ -76,15 +77,30 @@ export class BrokerageService implements OnModuleInit {
     manager: EntityManager,
     representedDepartmentId: string,
   ): Promise<Party> {
-    const party = await manager.findOne(Party, {
+    const existing = await manager.findOne(Party, {
       where: { linkedDepartmentId: representedDepartmentId },
     });
-    if (!party) {
-      throw new ConflictException(
-        'Internal department parties are missing. Run the database seed before recording this transfer.',
-      );
-    }
-    return party;
+    if (existing) return existing;
+
+    // Auto-create the missing internal party so the transfer can proceed
+    // without requiring a manual seed run.
+    const department = await manager.findOne(
+      (await import('../departments/entities/department.entity')).Department,
+      { where: { id: representedDepartmentId } },
+    );
+    const name = department
+      ? `${department.name} Internal Department`
+      : `Internal Department ${representedDepartmentId}`;
+    return manager.save(
+      manager.create(Party, {
+        partyType: PartyTypeEnum.INTERNAL_DEPARTMENT,
+        name,
+        linkedDepartmentId: representedDepartmentId,
+        primaryDepartmentId: representedDepartmentId,
+        openingBalance: '0',
+        notes: `Auto-created internal party for department ${representedDepartmentId}`,
+      } as Partial<Party>),
+    );
   }
 
   private ensureBrokerageDepartment() {

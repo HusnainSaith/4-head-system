@@ -7,7 +7,7 @@ import {
 } from 'class-validator';
 
 export class CreateBonusDto {
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
 

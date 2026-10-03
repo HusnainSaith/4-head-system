@@ -40,6 +40,11 @@ const Report = ({ title, data }: { title: string; data: ProfitLossView }) => (
           label={label}
           value={String(label).includes("Weight") || label === "Shrinkage" ? String(value) : money.format(Number(value))}
           tone={reportTone(label, value)}
+          delta={label === 'Operating Expenses' && data.shrinkageExpenses !== undefined
+            ? `Includes shrinkage: ${money.format(Number(data.shrinkageExpenses))}`
+            : label === 'Net Profit' && data.otherExpenses !== undefined
+              ? `Expenses deducted (excluding shrinkage): ${money.format(Number(data.otherExpenses))}`
+              : undefined}
         />
       ))}
     </div>

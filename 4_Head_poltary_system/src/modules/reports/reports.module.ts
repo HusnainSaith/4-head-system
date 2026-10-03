@@ -14,6 +14,7 @@ import { ShopSale } from '../fresh-chicken-shop/entities/shop-sale.entity';
 import { InternalTransfer } from '../supply/entities/internal-transfer.entity';
 import { StockMovement } from '../inventory/entities/stock-movement.entity';
 import { Department } from '../departments/entities/department.entity';
+import { DepartmentPartnerShare } from './entities/department-partner-share.entity';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { Department } from '../departments/entities/department.entity';
       InternalTransfer,
       StockMovement,
       Department,
+      DepartmentPartnerShare,
     ]),
   ],
   controllers: [ReportsController],

@@ -5,6 +5,11 @@ import {
   IsUUID,
   IsOptional,
   IsBoolean,
+  IsInt,
+  Min,
+  Max,
+  IsString,
+  MaxLength,
 } from 'class-validator';
 import { PaymentAccountSelectionDto } from '../../accounts/dto/payment-account-selection.dto';
 
@@ -12,11 +17,25 @@ export class RunPayrollDto extends PaymentAccountSelectionDto {
   @IsUUID()
   employeeId: string;
 
-  @IsNumber()
+  @IsInt()
+  @Min(1)
+  @Max(12)
   periodMonth: number;
 
-  @IsNumber()
+  @IsInt()
+  @Min(2000)
+  @Max(9999)
   periodYear: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  manualDeduction?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  deductionReason?: string;
 
   @IsOptional()
   @IsBoolean()

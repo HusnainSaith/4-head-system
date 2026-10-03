@@ -28,6 +28,7 @@ import { DepartmentScopeGuard } from '../../common/guards/department-scope.guard
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RoleEnum } from '../../common/enums/role.enum';
+import { ListPartyPaymentsDto } from './dto/list-party-payments.dto';
 
 @ApiTags('Parties')
 @Controller('parties')
@@ -131,6 +132,12 @@ export class PartiesController extends BaseController {
     );
   }
 
+  @Get('payments/all')
+  @ApiOperation({ summary: 'List saved payments and receipts for a department' })
+  listPayments(@Query() query: ListPartyPaymentsDto) {
+    return this.handleAsyncOperation(this.partiesService.listPayments(query));
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a single party by ID' })
   findOne(@Param('id') id: string) {
@@ -198,6 +205,21 @@ export class PartiesController extends BaseController {
     const user = (req as any).user;
     return this.handleAsyncOperation(
       this.partiesService.updatePayment(id, paymentId, dto, user.id),
+    );
+  }
+
+  @Delete(':id/payments/:paymentId')
+  @UseGuards(RolesGuard)
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  @ApiOperation({ summary: 'Reverse and delete a party payment' })
+  deletePayment(
+    @Param('id') id: string,
+    @Param('paymentId') paymentId: string,
+    @Req() req: Request,
+  ) {
+    const user = (req as any).user;
+    return this.handleAsyncOperation(
+      this.partiesService.deletePayment(id, paymentId, user.id),
     );
   }
 

@@ -1,3 +1,4 @@
+import { notesColumn } from "@/components/common/TransactionNotes";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useSelector } from "react-redux";
@@ -65,6 +66,7 @@ const shopSaleSchema = z.object({
 });
 
 const columns: DataTableColumn<ShopSale>[] = [
+    notesColumn(),
   {
     id: "customer",
     header: "Customer",

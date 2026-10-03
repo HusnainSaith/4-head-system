@@ -38,7 +38,11 @@ import type { PaymentAccountSelection } from "@/features/accounts/types";
 import {
   useCreateAdvanceMutation,
   useCreateBonusMutation,
+  useUpdateBonusMutation,
+  useDeleteBonusMutation,
   useConfirmAdvanceMutation,
+  useUpdateAdvanceMutation,
+  useDeleteAdvanceMutation,
   useGetEmployeeQuery,
   useListAdvancesQuery,
   useListBonusesQuery,
@@ -51,7 +55,7 @@ const money = new Intl.NumberFormat("en-PK", {
   currency: "PKR",
 });
 const recordSchema = z.object({
-  amount: z.coerce.number().positive(),
+  amount: z.coerce.number().positive().multipleOf(0.01),
   date: z.string().min(1),
   reason: z.string(),
 });
@@ -79,10 +83,25 @@ export function EmployeeDetailPage({
   const [advancePaymentMethod, setAdvancePaymentMethod] = useState<
     "cash" | "bank"
   >("cash");
-  const [advanceAccount, setAdvanceAccount] = useState<PaymentAccountSelection>({});
+  const [advanceAccount, setAdvanceAccount] = useState<PaymentAccountSelection>(
+    {},
+  );
   const [createAdvance, advanceState] = useCreateAdvanceMutation();
   const [createBonus, bonusState] = useCreateBonusMutation();
+  const [editingBonus, setEditingBonus] = useState<EmployeeBonus | null>(null);
+  const [deletingBonus, setDeletingBonus] = useState<EmployeeBonus | null>(
+    null,
+  );
+  const [updateBonus, updateBonusState] = useUpdateBonusMutation();
+  const [deleteBonus, deleteBonusState] = useDeleteBonusMutation();
   const [confirmAdvance, confirmState] = useConfirmAdvanceMutation();
+  const [editingAdvance, setEditingAdvance] = useState<EmployeeAdvance | null>(
+    null,
+  );
+  const [deletingAdvance, setDeletingAdvance] =
+    useState<EmployeeAdvance | null>(null);
+  const [updateAdvance, updateState] = useUpdateAdvanceMutation();
+  const [deleteAdvance, deleteState] = useDeleteAdvanceMutation();
   const canConfirmAdvance = role === Role.OWNER || role === Role.ACCOUNTANT;
   if (
     employee.isLoading ||
@@ -177,6 +196,40 @@ export function EmployeeDetailPage({
       ),
     },
   ];
+  if (canConfirmAdvance)
+    advanceColumns.push({
+      id: "actions",
+      header: "Actions",
+      cell: (advance) => (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={
+              Number(advance.amountRecovered) > 0 ||
+              advance.recoveryStatus !== "outstanding"
+            }
+            onClick={() => {
+              setEditingAdvance(advance);
+              setDialog("advance");
+            }}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={
+              Number(advance.amountRecovered) > 0 ||
+              advance.recoveryStatus !== "outstanding"
+            }
+            onClick={() => setDeletingAdvance(advance)}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
+    });
   const bonusColumns: DataTableColumn<EmployeeBonus>[] = [
     {
       id: "date",
@@ -190,6 +243,32 @@ export function EmployeeDetailPage({
     },
     { id: "reason", header: "Reason", cell: (b) => b.reason ?? "—" },
   ];
+  if (canConfirmAdvance)
+    bonusColumns.push({
+      id: "actions",
+      header: "Actions",
+      cell: (bonus) => (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => {
+              setEditingBonus(bonus);
+              setDialog("bonus");
+            }}
+          >
+            Edit
+          </Button>
+          <Button
+            size="sm"
+            variant="destructive"
+            onClick={() => setDeletingBonus(bonus)}
+          >
+            Delete
+          </Button>
+        </div>
+      ),
+    });
   return (
     <PageContainer>
       <PageHeader
@@ -212,8 +291,9 @@ export function EmployeeDetailPage({
               getRowId={(a) => a.id}
             />
             <p className="text-sm text-muted-foreground">
-              Recovery status and amount recovered are updated only by backend
-              payroll processing.
+              Recording an advance leaves it pending. Confirm and pay requires
+              sufficient funds. Advances recovered through payroll cannot be
+              edited or deleted.
             </p>
           </CardContent>
         </Card>
@@ -234,12 +314,29 @@ export function EmployeeDetailPage({
         </Card>
       ) : null}
       <RecordDialog
+        key={dialog + (editingAdvance?.id ?? editingBonus?.id ?? "new")}
+        initial={dialog === "bonus" ? editingBonus : editingAdvance}
         kind={dialog}
-        loading={advanceState.isLoading || bonusState.isLoading}
-        onClose={() => setDialog(null)}
+        loading={
+          advanceState.isLoading ||
+          bonusState.isLoading ||
+          updateState.isLoading ||
+          updateBonusState.isLoading
+        }
+        onClose={() => {
+          setDialog(null);
+          setEditingAdvance(null);
+          setEditingBonus(null);
+        }}
         onSubmit={async (amount, date, reason) => {
           try {
-            if (dialog === "advance")
+            if (dialog === "advance" && editingAdvance)
+              await updateAdvance({
+                employeeId: id,
+                advanceId: editingAdvance.id,
+                body: { amount, advanceDate: date, reason },
+              }).unwrap();
+            else if (dialog === "advance")
               await createAdvance({
                 employeeId: id,
                 body: {
@@ -248,20 +345,107 @@ export function EmployeeDetailPage({
                   reason: reason || undefined,
                 },
               }).unwrap();
+            else if (editingBonus)
+              await updateBonus({
+                employeeId: id,
+                bonusId: editingBonus.id,
+                body: { amount, bonusDate: date, reason },
+              }).unwrap();
             else
               await createBonus({
                 employeeId: id,
                 body: { amount, bonusDate: date, reason: reason || undefined },
               }).unwrap();
             toast.success(
-              dialog === "advance" ? "Advance recorded" : "Bonus recorded",
+              dialog === "advance"
+                ? editingAdvance
+                  ? "Advance updated"
+                  : "Advance recorded (pending payment)"
+                : editingBonus
+                  ? "Bonus updated"
+                  : "Bonus recorded",
             );
             setDialog(null);
+            setEditingAdvance(null);
+            setEditingBonus(null);
           } catch (error) {
             toast.error(getApiErrorMessage(error));
           }
         }}
       />
+      <Dialog
+        open={Boolean(deletingBonus)}
+        onOpenChange={(open) => !open && setDeletingBonus(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete bonus</DialogTitle>
+          </DialogHeader>
+          <p>
+            Delete this bonus? Salary balances and the payroll ledger will be
+            updated. A bonus cannot be reduced below salary already withdrawn.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingBonus(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              isLoading={deleteBonusState.isLoading}
+              onClick={() => {
+                if (!deletingBonus) return;
+                void deleteBonus({ employeeId: id, bonusId: deletingBonus.id })
+                  .unwrap()
+                  .then(() => {
+                    toast.success("Bonus deleted");
+                    setDeletingBonus(null);
+                  })
+                  .catch((error) => toast.error(getApiErrorMessage(error)));
+              }}
+            >
+              Delete bonus
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={Boolean(deletingAdvance)}
+        onOpenChange={(open) => !open && setDeletingAdvance(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete advance</DialogTitle>
+          </DialogHeader>
+          <p>
+            Delete this advance? Any confirmed payment will be reversed in the
+            ledger and returned to its original account.
+          </p>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeletingAdvance(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              isLoading={deleteState.isLoading}
+              onClick={() => {
+                if (!deletingAdvance) return;
+                void deleteAdvance({
+                  employeeId: id,
+                  advanceId: deletingAdvance.id,
+                })
+                  .unwrap()
+                  .then(() => {
+                    toast.success("Advance deleted");
+                    setDeletingAdvance(null);
+                  })
+                  .catch((error) => toast.error(getApiErrorMessage(error)));
+              }}
+            >
+              Delete advance
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
       <Dialog
         open={Boolean(confirmingAdvance)}
         onOpenChange={(open) => !open && setConfirmingAdvance(null)}
@@ -279,9 +463,10 @@ export function EmployeeDetailPage({
             <Label>Payment method</Label>
             <Select
               value={advancePaymentMethod}
-              onValueChange={(value) =>
-                (setAdvancePaymentMethod(value as "cash" | "bank"), setAdvanceAccount({}))
-              }
+              onValueChange={(value) => (
+                setAdvancePaymentMethod(value as "cash" | "bank"),
+                setAdvanceAccount({})
+              )}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -292,7 +477,12 @@ export function EmployeeDetailPage({
               </SelectContent>
             </Select>
           </div>
-          <PaymentAccountFields paymentMethod={advancePaymentMethod} value={advanceAccount} onChange={setAdvanceAccount} departmentId={employeeDepartmentId} />
+          <PaymentAccountFields
+            paymentMethod={advancePaymentMethod}
+            value={advanceAccount}
+            onChange={setAdvanceAccount}
+            departmentId={employeeDepartmentId}
+          />
           <DialogFooter>
             <Button
               variant="outline"
@@ -336,18 +526,26 @@ export function EmployeeBonusesPage() {
 }
 function RecordDialog({
   kind,
+  initial,
   loading,
   onClose,
   onSubmit,
 }: {
   kind: "advance" | "bonus" | null;
+  initial?: EmployeeAdvance | EmployeeBonus | null;
   loading: boolean;
   onClose: () => void;
   onSubmit: (amount: number, date: string, reason: string) => Promise<void>;
 }) {
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [reason, setReason] = useState("");
+  const [amount, setAmount] = useState(initial?.amount ?? "");
+  const [date, setDate] = useState(
+    initial
+      ? String(
+          "advanceDate" in initial ? initial.advanceDate : initial.bonusDate,
+        ).slice(0, 10)
+      : new Date().toISOString().slice(0, 10),
+  );
+  const [reason, setReason] = useState(initial?.reason ?? "");
   return (
     <Dialog
       open={kind !== null}
@@ -357,7 +555,9 @@ function RecordDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Record {kind}</DialogTitle>
+          <DialogTitle>
+            {initial ? "Edit" : "Record"} {kind}
+          </DialogTitle>
         </DialogHeader>
         <form
           className="space-y-3"
@@ -377,6 +577,9 @@ function RecordDialog({
             <Input
               id="record-amount"
               type="number"
+              min="0.01"
+              step="0.01"
+              required
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
             />
@@ -386,6 +589,7 @@ function RecordDialog({
             <Input
               id="record-date"
               type="date"
+              required
               value={date}
               onChange={(e) => setDate(e.target.value)}
             />

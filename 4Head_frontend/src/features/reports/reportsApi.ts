@@ -1,1 +1,123 @@
-import{apiSlice}from"@/store/apiSlice";import type{ApiResponse}from"@/types/api";import type{ConsolidatedProfitLoss,DateRangeParams,ExpenseBreakdownItem,OutstandingBalance,PartnerProfitShare,PayrollSummaryItem,StockSummary}from"./types";const common={keepUnusedDataFor:5,refetchOnMountOrArgChange:true as const};export const reportsApi=apiSlice.injectEndpoints({endpoints:(b)=>({getConsolidatedProfitLoss:b.query<ApiResponse<ConsolidatedProfitLoss>,DateRangeParams|void>({query:(p)=>({url:"/reports/consolidated-profit-loss",params:p||undefined}),...common}),getPartnerProfitShare:b.query<ApiResponse<PartnerProfitShare>,DateRangeParams|void>({query:(p)=>({url:"/reports/partner-profit-share",params:p||undefined}),...common}),getOutstandingBalances:b.query<ApiResponse<OutstandingBalance[]>,{departmentId?:string}|void>({query:(p)=>({url:"/reports/outstanding-balances",params:p||undefined}),...common}),getStockSummary:b.query<ApiResponse<StockSummary>,DateRangeParams&{departmentId?:string}>({query:(p)=>({url:"/reports/stock-summary",params:p}),...common}),getExpenseBreakdown:b.query<ApiResponse<ExpenseBreakdownItem[]>,DateRangeParams&{departmentId?:string;categoryId?:string}>({query:(p)=>({url:"/reports/expense-breakdown",params:p}),...common}),getPayrollSummary:b.query<ApiResponse<PayrollSummaryItem[]>,DateRangeParams&{departmentId?:string}>({query:(p)=>({url:"/reports/payroll-summary",params:p}),...common})})});export const{useGetConsolidatedProfitLossQuery,useGetPartnerProfitShareQuery,useGetOutstandingBalancesQuery,useGetStockSummaryQuery,useGetExpenseBreakdownQuery,useGetPayrollSummaryQuery}=reportsApi;
+import { apiSlice } from "@/store/apiSlice";
+import type { ApiResponse } from "@/types/api";
+import type {
+  ConsolidatedProfitLoss,
+  DateRangeParams,
+  ExpenseBreakdownItem,
+  OutstandingBalance,
+  PartnerProfitShare,
+  PayrollSummaryItem,
+  StockSummary,
+} from "./types";
+const common = {
+  providesTags: ["ConsolidatedReport" as const],
+  keepUnusedDataFor: 5,
+  refetchOnMountOrArgChange: true as const,
+};
+export const reportsApi = apiSlice.injectEndpoints({
+  endpoints: (b) => ({
+    postPartnerProfit: b.mutation<
+      ApiResponse<{ changed: boolean; message: string }>,
+      {
+        departmentId: string;
+        startDate?: string;
+        endDate?: string;
+        expectedNetProfit: string;
+      }
+    >({
+      query: ({ departmentId, ...body }) => ({
+        url: `/reports/partner-profit-share/${departmentId}/post`,
+        method: "POST",
+        body,
+      }),
+      invalidatesTags: [
+        "ConsolidatedReport",
+        "Party",
+        "PartyStatement",
+        "DepartmentBalance",
+        "Account",
+      ],
+    }),
+    savePartnerShares: b.mutation<
+      ApiResponse<{ departmentId: string }>,
+      {
+        departmentId: string;
+        allocationMode?: "equal" | "percentage";
+        shares: { userId: string; percentage?: string }[];
+      }
+    >({
+      query: ({ departmentId, shares, allocationMode }) => ({
+        url: `/reports/partner-shares/${departmentId}`,
+        method: "PUT",
+        body: { shares, allocationMode },
+      }),
+      invalidatesTags: [
+        "ConsolidatedReport",
+        "Party",
+        "PartyStatement",
+        "DepartmentBalance",
+      ],
+    }),
+    getConsolidatedProfitLoss: b.query<
+      ApiResponse<ConsolidatedProfitLoss>,
+      DateRangeParams | void
+    >({
+      query: (p) => ({
+        url: "/reports/consolidated-profit-loss",
+        params: p || undefined,
+      }),
+      ...common,
+    }),
+    getPartnerProfitShare: b.query<
+      ApiResponse<PartnerProfitShare>,
+      DateRangeParams | void
+    >({
+      query: (p) => ({
+        url: "/reports/partner-profit-share",
+        params: p || undefined,
+      }),
+      ...common,
+    }),
+    getOutstandingBalances: b.query<
+      ApiResponse<OutstandingBalance[]>,
+      { departmentId?: string } | void
+    >({
+      query: (p) => ({
+        url: "/reports/outstanding-balances",
+        params: p || undefined,
+      }),
+      ...common,
+    }),
+    getStockSummary: b.query<
+      ApiResponse<StockSummary>,
+      DateRangeParams & { departmentId?: string }
+    >({
+      query: (p) => ({ url: "/reports/stock-summary", params: p }),
+      ...common,
+    }),
+    getExpenseBreakdown: b.query<
+      ApiResponse<ExpenseBreakdownItem[]>,
+      DateRangeParams & { departmentId?: string; categoryId?: string }
+    >({
+      query: (p) => ({ url: "/reports/expense-breakdown", params: p }),
+      ...common,
+    }),
+    getPayrollSummary: b.query<
+      ApiResponse<PayrollSummaryItem[]>,
+      DateRangeParams & { departmentId?: string }
+    >({
+      query: (p) => ({ url: "/reports/payroll-summary", params: p }),
+      ...common,
+    }),
+  }),
+});
+export const {
+  usePostPartnerProfitMutation,
+  useSavePartnerSharesMutation,
+  useGetConsolidatedProfitLossQuery,
+  useGetPartnerProfitShareQuery,
+  useGetOutstandingBalancesQuery,
+  useGetStockSummaryQuery,
+  useGetExpenseBreakdownQuery,
+  useGetPayrollSummaryQuery,
+} = reportsApi;

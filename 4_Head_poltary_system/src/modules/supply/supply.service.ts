@@ -253,7 +253,10 @@ export class SupplyService implements OnModuleInit {
     if (!dto.purchaseDate)
       throw new BadRequestException('purchaseDate is required');
     return this.dataSource.transaction(async (manager) => {
-      const purchase = await this.supplyRepository.findPurchaseById(id, manager);
+      const purchase = await this.supplyRepository.findPurchaseById(
+        id,
+        manager,
+      );
       if (!purchase) throw new NotFoundException('Supply purchase not found');
       const dateOnly = Object.keys(dto).every((key) => key === 'purchaseDate');
       const nextQuantity = dto.quantityKg ?? Number(purchase.quantityKg);
@@ -264,27 +267,87 @@ export class SupplyService implements OnModuleInit {
         totalAmount: nextTotal,
       };
       if (dto.partyId !== undefined) changes.partyId = dto.partyId;
-      if (dto.quantityKg !== undefined) changes.quantityKg = dto.quantityKg.toFixed(3);
-      if (dto.ratePerKg !== undefined) changes.ratePerKg = dto.ratePerKg.toFixed(2);
-      if (dto.paymentMethod !== undefined) changes.paymentMethod = dto.paymentMethod;
+      if (dto.quantityKg !== undefined)
+        changes.quantityKg = dto.quantityKg.toFixed(3);
+      if (dto.ratePerKg !== undefined)
+        changes.ratePerKg = dto.ratePerKg.toFixed(2);
+      if (dto.paymentMethod !== undefined)
+        changes.paymentMethod = dto.paymentMethod;
       if (dto.amountPaid !== undefined) {
         changes.amountPaid = dto.amountPaid.toFixed(2);
-        changes.outstandingAmount = (Number(nextTotal) - dto.amountPaid).toFixed(2);
+        changes.outstandingAmount = (
+          Number(nextTotal) - dto.amountPaid
+        ).toFixed(2);
       }
       if (dto.vehicleId !== undefined) changes.vehicleId = dto.vehicleId;
       if (dto.notes !== undefined) changes.notes = dto.notes;
+
+      const quantityChanged =
+        dto.quantityKg !== undefined &&
+        Number(dto.quantityKg) !== Number(purchase.quantityKg);
+      if (quantityChanged) {
+        const oldQty = Number(purchase.quantityKg);
+        const newQty = Number(dto.quantityKg);
+        const delta = newQty - oldQty;
+        const rate = Number(dto.ratePerKg ?? purchase.ratePerKg);
+        if (delta > 0) {
+          // Quantity increased — add the extra stock in
+          await this.inventoryService.applyPurchaseIn(
+            this.supplyDeptId,
+            delta,
+            rate,
+            StockMovementSourceEnum.PURCHASE,
+            id,
+            new Date(dto.purchaseDate),
+            manager,
+          );
+        } else {
+          // Quantity decreased — remove the excess stock
+          await this.inventoryService.applySaleOut(
+            this.supplyDeptId,
+            Math.abs(delta),
+            StockMovementSourceEnum.PURCHASE,
+            id,
+            new Date(dto.purchaseDate),
+            manager,
+          );
+        }
+        // Update the existing movement record to reflect the new quantity/rate/date
+        await manager.update(
+          StockMovement,
+          {
+            sourceType: StockMovementSourceEnum.PURCHASE,
+            sourceId: id,
+            movementType: 'purchase_in',
+          },
+          {
+            movementDate: new Date(dto.purchaseDate),
+            quantityKg: dto.quantityKg.toFixed(3),
+            ratePerKg: rate.toFixed(4),
+          },
+        );
+      } else {
+        await manager.update(
+          StockMovement,
+          { sourceType: StockMovementSourceEnum.PURCHASE, sourceId: id },
+          {
+            movementDate: new Date(dto.purchaseDate),
+            ...(dto.quantityKg !== undefined
+              ? { quantityKg: dto.quantityKg.toFixed(3) }
+              : {}),
+            ...(dto.ratePerKg !== undefined
+              ? {
+                  ratePerKg: dto.ratePerKg.toFixed(4),
+                  resultingWac: dto.ratePerKg.toFixed(4),
+                }
+              : {}),
+          },
+        );
+      }
+
       await manager.update(SupplyPurchase, id, {
         ...changes,
       });
-      await manager.update(
-        StockMovement,
-        { sourceType: StockMovementSourceEnum.PURCHASE, sourceId: id },
-        {
-          movementDate: new Date(dto.purchaseDate),
-          ...(dto.quantityKg !== undefined ? { quantityKg: dto.quantityKg.toFixed(3) } : {}),
-          ...(dto.ratePerKg !== undefined ? { ratePerKg: dto.ratePerKg.toFixed(4), resultingWac: dto.ratePerKg.toFixed(4) } : {}),
-        },
-      );
       await manager.update(
         LedgerEntry,
         { sourceType: 'purchase', sourceId: id },
@@ -297,8 +360,13 @@ export class SupplyService implements OnModuleInit {
         });
         for (const entry of entries) {
           if (entry.account.code === 'cogs') entry.amount = nextTotal;
-          if (entry.account.code === 'cash') entry.amount = changes.amountPaid ?? purchase.amountPaid;
-          if (entry.account.code === 'accounts_payable') entry.amount = changes.amountPaid !== undefined ? (Number(nextTotal) - Number(changes.amountPaid)).toFixed(2) : (Number(nextTotal) - Number(purchase.amountPaid)).toFixed(2);
+          if (entry.account.code === 'cash')
+            entry.amount = changes.amountPaid ?? purchase.amountPaid;
+          if (entry.account.code === 'accounts_payable')
+            entry.amount =
+              changes.amountPaid !== undefined
+                ? (Number(nextTotal) - Number(changes.amountPaid)).toFixed(2)
+                : (Number(nextTotal) - Number(purchase.amountPaid)).toFixed(2);
         }
         await manager.getRepository(LedgerEntry).save(entries);
       }
@@ -496,8 +564,7 @@ export class SupplyService implements OnModuleInit {
   }
 
   async updateSale(id: string, dto: Partial<CreateSupplySaleDto>) {
-    if (!dto.saleDate)
-      throw new BadRequestException('saleDate is required');
+    if (!dto.saleDate) throw new BadRequestException('saleDate is required');
     return this.dataSource.transaction(async (manager) => {
       const sale = await this.supplyRepository.findSaleById(id, manager);
       if (!sale) throw new NotFoundException('Supply sale not found');
@@ -505,25 +572,88 @@ export class SupplyService implements OnModuleInit {
       const nextQuantity = dto.quantityKg ?? Number(sale.quantityKg);
       const nextRate = dto.ratePerKg ?? Number(sale.ratePerKg);
       const nextTotal = (nextQuantity * nextRate).toFixed(2);
-      const changes: Partial<SupplySale> = { saleDate: new Date(dto.saleDate!), totalAmount: nextTotal };
+      const nextAmountReceived =
+        dto.amountReceived ?? Number(sale.amountReceived);
+      if (nextAmountReceived > Number(nextTotal))
+        throw new BadRequestException(
+          'Amount received cannot exceed the updated sale total',
+        );
+      const changes: Partial<SupplySale> = {
+        saleDate: new Date(dto.saleDate!),
+        totalAmount: nextTotal,
+      };
+      changes.amountReceived = nextAmountReceived.toFixed(2);
+      changes.outstandingAmount = (
+        Number(nextTotal) - nextAmountReceived
+      ).toFixed(2);
       if (dto.partyId !== undefined) changes.partyId = dto.partyId;
-      if (dto.quantityKg !== undefined) changes.quantityKg = dto.quantityKg.toFixed(3);
-      if (dto.ratePerKg !== undefined) changes.ratePerKg = dto.ratePerKg.toFixed(2);
-      if (dto.paymentMethod !== undefined) changes.paymentMethod = dto.paymentMethod;
-      if (dto.amountReceived !== undefined) {
-        changes.amountReceived = dto.amountReceived.toFixed(2);
-        changes.outstandingAmount = (Number(nextTotal) - dto.amountReceived).toFixed(2);
-      }
+      if (dto.quantityKg !== undefined)
+        changes.quantityKg = dto.quantityKg.toFixed(3);
+      if (dto.ratePerKg !== undefined)
+        changes.ratePerKg = dto.ratePerKg.toFixed(2);
+      if (dto.paymentMethod !== undefined)
+        changes.paymentMethod = dto.paymentMethod;
       if (dto.vehicleId !== undefined) changes.vehicleId = dto.vehicleId;
       if (dto.notes !== undefined) changes.notes = dto.notes;
+
+      const quantityChanged =
+        dto.quantityKg !== undefined &&
+        Number(dto.quantityKg) !== Number(sale.quantityKg);
+      if (quantityChanged) {
+        const oldQty = Number(sale.quantityKg);
+        const newQty = Number(dto.quantityKg);
+        const delta = newQty - oldQty;
+        if (delta > 0) {
+          // Selling more — deduct the extra from stock
+          await this.inventoryService.applySaleOut(
+            this.supplyDeptId,
+            delta,
+            StockMovementSourceEnum.SALE,
+            id,
+            new Date(dto.saleDate),
+            manager,
+          );
+        } else {
+          // Selling less — return the excess to stock
+          await this.inventoryService.applyPurchaseIn(
+            this.supplyDeptId,
+            Math.abs(delta),
+            Number(sale.ratePerKg),
+            StockMovementSourceEnum.SALE,
+            id,
+            new Date(dto.saleDate),
+            manager,
+          );
+        }
+        // Update the existing movement record
+        await manager.update(
+          StockMovement,
+          {
+            sourceType: StockMovementSourceEnum.SALE,
+            sourceId: id,
+            movementType: 'sale_out',
+          },
+          {
+            movementDate: new Date(dto.saleDate),
+            quantityKg: dto.quantityKg.toFixed(3),
+          },
+        );
+      } else {
+        await manager.update(
+          StockMovement,
+          { sourceType: StockMovementSourceEnum.SALE, sourceId: id },
+          {
+            movementDate: new Date(dto.saleDate),
+            ...(dto.quantityKg !== undefined
+              ? { quantityKg: dto.quantityKg.toFixed(3) }
+              : {}),
+          },
+        );
+      }
+
       await manager.update(SupplySale, id, {
         ...changes,
       });
-      await manager.update(
-        StockMovement,
-        { sourceType: StockMovementSourceEnum.SALE, sourceId: id },
-        { movementDate: new Date(dto.saleDate), ...(dto.quantityKg !== undefined ? { quantityKg: dto.quantityKg.toFixed(3) } : {}) },
-      );
       await manager.update(
         LedgerEntry,
         { sourceType: 'sale', sourceId: id },
@@ -536,8 +666,15 @@ export class SupplyService implements OnModuleInit {
         });
         for (const entry of entries) {
           if (entry.account.code === 'revenue') entry.amount = nextTotal;
-          if (entry.account.code === 'cash') entry.amount = changes.amountReceived ?? sale.amountReceived;
-          if (entry.account.code === 'accounts_receivable') entry.amount = changes.amountReceived !== undefined ? (Number(nextTotal) - Number(changes.amountReceived)).toFixed(2) : (Number(nextTotal) - Number(sale.amountReceived)).toFixed(2);
+          if (entry.account.code === 'cash')
+            entry.amount = changes.amountReceived ?? sale.amountReceived;
+          if (entry.account.code === 'accounts_receivable')
+            entry.amount =
+              changes.amountReceived !== undefined
+                ? (Number(nextTotal) - Number(changes.amountReceived)).toFixed(
+                    2,
+                  )
+                : (Number(nextTotal) - Number(sale.amountReceived)).toFixed(2);
         }
         await manager.getRepository(LedgerEntry).save(entries);
       }
@@ -852,6 +989,38 @@ export class SupplyService implements OnModuleInit {
     return this.inventoryService.getBalance(this.supplyDeptId);
   }
 
+  /**
+   * Reconstructs the supply department stock balance as of the end of a given
+   * date by replaying all stock_movements up to and including that date.
+   * Inbound movements (purchase_in, transfer_in, opening_stock) add to stock;
+   * outbound movements (sale_out, transfer_out, writeoff_out) subtract.
+   */
+  async getStockAsOf(
+    date: string,
+  ): Promise<{ quantityKg: string; asOf: string }> {
+    const result = await this.dataSource
+      .getRepository(StockMovement)
+      .createQueryBuilder('m')
+      .select(
+        `COALESCE(SUM(
+          CASE WHEN m.movement_type IN ('purchase_in','transfer_in','opening_stock','dressing_in')
+               THEN CAST(m.quantity_kg AS numeric)
+               ELSE -CAST(m.quantity_kg AS numeric)
+          END
+        ), 0)`,
+        'quantityKg',
+      )
+      .where('m.department_id = :deptId', { deptId: this.supplyDeptId })
+      .andWhere('m.movement_date <= :date', { date })
+      .andWhere(`m.stock_type = 'standard'`)
+      .getRawOne<{ quantityKg: string }>();
+
+    return {
+      quantityKg: Number(result?.quantityKg ?? 0).toFixed(3),
+      asOf: date,
+    };
+  }
+
   async createStockWriteoff(dto: any, createdBy: string) {
     if (!dto.quantityKg || !dto.ratePerKg || !dto.writeoffDate || !dto.reason) {
       throw new BadRequestException(
@@ -906,13 +1075,32 @@ export class SupplyService implements OnModuleInit {
     return savedWriteoff;
   }
 
-  listStockWriteoffs() { return this.inventoryService.listWriteoffs(this.supplyDeptId); }
-  getStockWriteoff(id: string) { return this.inventoryService.getWriteoff(id, this.supplyDeptId); }
+  listStockWriteoffs() {
+    return this.inventoryService.listWriteoffs(this.supplyDeptId);
+  }
+  getStockWriteoff(id: string) {
+    return this.inventoryService.getWriteoff(id, this.supplyDeptId);
+  }
   updateStockWriteoff(id: string, dto: any, actorId: string) {
-    return this.dataSource.transaction((manager) => this.inventoryService.updateWriteoff(id, this.supplyDeptId, dto, actorId, manager));
+    return this.dataSource.transaction((manager) =>
+      this.inventoryService.updateWriteoff(
+        id,
+        this.supplyDeptId,
+        dto,
+        actorId,
+        manager,
+      ),
+    );
   }
   async deleteStockWriteoff(id: string, actorId: string) {
-    await this.dataSource.transaction((manager) => this.inventoryService.deleteWriteoff(id, this.supplyDeptId, actorId, manager));
+    await this.dataSource.transaction((manager) =>
+      this.inventoryService.deleteWriteoff(
+        id,
+        this.supplyDeptId,
+        actorId,
+        manager,
+      ),
+    );
     return { success: true };
   }
 
@@ -921,50 +1109,90 @@ export class SupplyService implements OnModuleInit {
     const toDate = to ?? new Date().toISOString().slice(0, 10);
 
     const report = async (excludeInternal: boolean) => {
-      const [revenue, cogs, transferRevenue, operatingExpenses, payrollExpenses] =
-        await Promise.all([
-          this.supplyRepository.sumActiveSaleTotal(from, to),
-          this.supplyRepository.sumActivePurchaseTotal(from, to),
-          excludeInternal
-            ? Promise.resolve('0.00')
-            : this.supplyRepository.sumActiveTransferTotal(from, to),
-          this.expensesService
-            ? this.expensesService.sumTotal(this.supplyDeptId, from, to)
-            : this.ledgerService.sumByAccount(
-                this.supplyDeptId,
-                'operating_expense',
-                fromDate,
-                toDate,
-                'debit',
-              ),
-          this.ledgerService.sumByAccount(
-            this.supplyDeptId,
-            'payroll_expense',
-            fromDate,
-            toDate,
-            'debit',
-          ),
-        ]);
+      const [
+        revenue,
+        cogs,
+        transferRevenue,
+        operatingExpenses,
+        payrollExpenses,
+        shrinkageExpenses,
+      ] = await Promise.all([
+        this.supplyRepository.sumActiveSaleTotal(
+          fromDate,
+          toDate,
+          this.supplyDeptId,
+        ),
+        this.supplyRepository.sumActivePurchaseTotal(
+          fromDate,
+          toDate,
+          this.supplyDeptId,
+        ),
+        excludeInternal
+          ? Promise.resolve('0.00')
+          : this.supplyRepository.sumActiveTransferTotal(from, to),
+        this.expensesService
+          ? this.expensesService.sumTotal(this.supplyDeptId, fromDate, toDate)
+          : this.ledgerService.sumByAccount(
+              this.supplyDeptId,
+              'operating_expense',
+              fromDate,
+              toDate,
+              'debit',
+            ),
+        this.ledgerService.sumByAccount(
+          this.supplyDeptId,
+          'payroll_expense',
+          fromDate,
+          toDate,
+          'debit',
+        ),
+        this.supplyRepository.sumShrinkageExpenses(
+          this.supplyDeptId,
+          fromDate,
+          toDate,
+        ),
+      ]);
 
-      const totalRevenue = (Number(revenue) + Number(transferRevenue)).toFixed(2);
+      const totalRevenue = (Number(revenue) + Number(transferRevenue)).toFixed(
+        2,
+      );
       const grossProfit = (Number(totalRevenue) - Number(cogs)).toFixed(2);
+      // Purchase costs already include the lost stock; display shrinkage but do not deduct it twice.
+      const otherExpenses = (
+        Number(operatingExpenses) - Number(shrinkageExpenses)
+      ).toFixed(2);
       const netProfit = (
         Number(grossProfit) -
-        Number(operatingExpenses) -
+        Number(otherExpenses) -
         Number(payrollExpenses)
       ).toFixed(2);
-      const [purchaseQuantityKg, externalSaleQuantityKg, transferQuantityKg, shrinkageKg] = await Promise.all([
+      const [
+        purchaseQuantityKg,
+        externalSaleQuantityKg,
+        transferQuantityKg,
+        shrinkageKg,
+      ] = await Promise.all([
         this.supplyRepository.sumActivePurchaseQuantity(from, to),
         this.supplyRepository.sumActiveSaleQuantity(from, to),
-        excludeInternal ? Promise.resolve('0.000') : this.supplyRepository.sumActiveTransferQuantity(from, to),
-        this.inventoryService.sumWriteoffQuantity(this.supplyDeptId, fromDate, toDate),
+        excludeInternal
+          ? Promise.resolve('0.000')
+          : this.supplyRepository.sumActiveTransferQuantity(from, to),
+        this.inventoryService.sumWriteoffQuantity(
+          this.supplyDeptId,
+          fromDate,
+          toDate,
+        ),
       ]);
-      const saleQuantityKg = (Number(externalSaleQuantityKg) + Number(transferQuantityKg)).toFixed(3);
+      const saleQuantityKg = (
+        Number(externalSaleQuantityKg) + Number(transferQuantityKg)
+      ).toFixed(3);
       return {
         revenue: totalRevenue,
         cogs,
         grossProfit,
         operatingExpenses,
+        shrinkageExpenses,
+        otherExpenses,
         payroll: payrollExpenses,
         netProfit,
         purchaseQuantityKg,
@@ -978,7 +1206,6 @@ export class SupplyService implements OnModuleInit {
     ]);
     return { externalOnly, includingInternalTransfers };
   }
-
 
   /**
    * Departmental P&L must expense only stock that left Supply during the
@@ -1013,7 +1240,8 @@ export class SupplyService implements OnModuleInit {
       .andWhere('movement.source_type IN (:...sourceTypes)', {
         sourceTypes,
       })
-      .andWhere(`(
+      .andWhere(
+        `(
         (movement.source_type = 'sale' AND EXISTS (
           SELECT 1 FROM supply_sales active_sale
           WHERE active_sale.id = movement.source_id
@@ -1026,7 +1254,8 @@ export class SupplyService implements OnModuleInit {
           WHERE active_transfer.id = movement.source_id
             AND active_transfer.deleted_at IS NULL
         ))
-      )`)
+      )`,
+      )
       .getRawOne<{ total: string }>();
     return Number(result?.total ?? 0).toFixed(2);
   }

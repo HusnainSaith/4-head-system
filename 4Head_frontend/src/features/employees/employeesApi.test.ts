@@ -22,6 +22,13 @@ vi.mock("@/store/apiSlice", async () => {
         "EmployeeAdvance",
         "EmployeeBonus",
         "SalaryRun",
+        "SalaryAccount",
+        "Account",
+        "ConsolidatedReport",
+        "SupplyReport",
+        "BrokerageReport",
+        "WastageReport",
+        "ShopReport",
       ] as const,
       endpoints: () => ({}),
     }),
@@ -71,6 +78,28 @@ describe("employeesApi", () => {
       "/employees/e1/bonuses",
     ]);
   });
+  it("refreshes salary balances and payroll details after recording a bonus", async () => {
+    await dispatch(api.endpoints.getSalaryAccount.initiate("e1"));
+    await dispatch(api.endpoints.getSalaryRun.initiate("r1"));
+    await dispatch(api.endpoints.listSalaryRuns.initiate({}));
+    requests.length = 0;
+    await dispatch(
+      api.endpoints.createBonus.initiate({
+        employeeId: "e1",
+        body: { amount: 14999, bonusDate: "2026-09-30" },
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(requests.map((request) => request.url)).toEqual(
+        expect.arrayContaining([
+          "/employees/e1/bonuses",
+          "/employees/e1/salary-account",
+          "/payroll/runs/r1",
+          "/payroll/runs",
+        ]),
+      );
+    });
+  });
   it("uses the employee update, delete, and activate routes", async () => {
     await dispatch(
       api.endpoints.updateEmployee.initiate({
@@ -87,6 +116,31 @@ describe("employeesApi", () => {
         expect.objectContaining({
           url: "/employees/e1/activate",
           method: "PATCH",
+        }),
+      ]),
+    );
+  });
+  it("uses employee-scoped bonus update and delete routes", async () => {
+    await dispatch(
+      api.endpoints.updateBonus.initiate({
+        employeeId: "e1",
+        bonusId: "b1",
+        body: { amount: 50, bonusDate: "2026-10-01", reason: "Corrected" },
+      }),
+    );
+    await dispatch(
+      api.endpoints.deleteBonus.initiate({ employeeId: "e1", bonusId: "b1" }),
+    );
+    expect(requests).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          url: "/employees/e1/bonuses/b1",
+          method: "PATCH",
+          body: expect.objectContaining({ amount: 50 }),
+        }),
+        expect.objectContaining({
+          url: "/employees/e1/bonuses/b1",
+          method: "DELETE",
         }),
       ]),
     );

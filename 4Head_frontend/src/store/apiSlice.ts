@@ -11,6 +11,7 @@ import { clearAuthCookies, getCsrfToken } from "@/lib/auth-cookies";
 const rawBaseQuery = fetchBaseQuery({
   baseUrl: import.meta.env.VITE_API_BASE_URL,
   credentials: "include",
+  timeout: 45_000,
   prepareHeaders: (headers) => {
     const csrfToken = getCsrfToken();
     if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
@@ -37,6 +38,7 @@ function isImportantMutation(args: string | FetchArgs): boolean {
   const path = args.url.replace(/^\/api\/v1/, "").split("?")[0];
   return [
     "/users",
+    "/reports/partner-shares",
     "/roles",
     "/departments",
     "/parties",
@@ -84,6 +86,17 @@ async function refreshSession(
 
 let refreshInFlight: Promise<boolean> | null = null;
 
+// Partner entitlements depend on transactions and department role assignments.
+const businessMutationTags = [
+  // Cash/bank balances and statements depend on every posted financial change.
+  { type: "Account" as const },
+  { type: "Notification" as const, id: "LIST" },
+  { type: "ConsolidatedReport" as const },
+  { type: "Party" as const },
+  { type: "PartyStatement" as const },
+  { type: "DepartmentBalance" as const },
+];
+
 const baseQueryWithRefresh: BaseQueryFn<
   string | FetchArgs,
   unknown,
@@ -92,9 +105,7 @@ const baseQueryWithRefresh: BaseQueryFn<
   const result = await rawBaseQuery(args, api, extraOptions);
 
   if (!result.error && isImportantMutation(args)) {
-    api.dispatch(
-      apiSlice.util.invalidateTags([{ type: "Notification", id: "LIST" }]),
-    );
+    api.dispatch(apiSlice.util.invalidateTags(businessMutationTags));
   }
 
   if (result.error?.status !== 401 || isSessionEndpoint(args)) {
@@ -111,9 +122,7 @@ const baseQueryWithRefresh: BaseQueryFn<
   if (!refreshed) return result;
   const retryResult = await rawBaseQuery(args, api, extraOptions);
   if (!retryResult.error && isImportantMutation(args)) {
-    api.dispatch(
-      apiSlice.util.invalidateTags([{ type: "Notification", id: "LIST" }]),
-    );
+    api.dispatch(apiSlice.util.invalidateTags(businessMutationTags));
   }
   return retryResult;
 };
@@ -121,6 +130,7 @@ const baseQueryWithRefresh: BaseQueryFn<
 /** Single RTK Query API; feature modules extend it with injectEndpoints(). */
 export const apiSlice = createApi({
   reducerPath: "api",
+  refetchOnReconnect: true,
   baseQuery: baseQueryWithRefresh,
   tagTypes: [
     "Party",

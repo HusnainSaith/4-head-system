@@ -60,3 +60,52 @@ describe("apiSlice refresh concurrency", () => {
     vi.unstubAllGlobals();
   });
 });
+
+describe("API request timeout", () => {
+  it("ends a stalled request without repeating a payment mutation", async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const request = input as Request;
+      return new Promise<Response>((_resolve, reject) =>
+        request.signal.addEventListener(
+          "abort",
+          () => reject(request.signal.reason),
+          { once: true },
+        ),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { apiSlice } = await import("./apiSlice");
+    const timeoutApi = apiSlice.injectEndpoints({
+      endpoints: (builder) => ({
+        timeoutPayment: builder.mutation<unknown, void>({
+          query: () => ({
+            url: "/accounts/test-payment",
+            method: "POST",
+            body: {},
+          }),
+        }),
+      }),
+    });
+    const store = configureStore({
+      reducer: { [timeoutApi.reducerPath]: timeoutApi.reducer },
+      middleware: (defaults) => defaults().concat(timeoutApi.middleware),
+    });
+    try {
+      const request = store.dispatch(
+        timeoutApi.endpoints.timeoutPayment.initiate(),
+      );
+      await vi.advanceTimersByTimeAsync(45001);
+      const result = await request;
+      expect(result.error).toEqual({
+        status: "TIMEOUT_ERROR",
+        error: expect.any(String),
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      store.dispatch(timeoutApi.util.resetApiState());
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
+  });
+});

@@ -2,10 +2,21 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, EntityManager } from 'typeorm';
 import { LedgerEntry } from './entities/ledger-entry.entity';
+import { pendingPayrollBonuses } from '../employees/pending-payroll-bonuses';
 import { ChartOfAccount } from './entities/chart-of-account.entity';
 
 @Injectable()
 export class LedgerRepository {
+  pendingPayrollBonuses(departmentId: string, from: Date, inclusiveTo: Date) {
+    const end = new Date(inclusiveTo);
+    end.setUTCDate(end.getUTCDate() + 1);
+    return pendingPayrollBonuses(
+      this.ledgerRepo.manager,
+      departmentId,
+      from,
+      end,
+    );
+  }
   constructor(
     @InjectRepository(LedgerEntry)
     private readonly ledgerRepo: Repository<LedgerEntry>,
@@ -33,11 +44,15 @@ export class LedgerRepository {
     partyId: string,
     from: Date,
     to: Date,
-  ): Promise<Array<LedgerEntry & {
-    quantityKg?: string;
-    ratePerKg?: string;
-    totalAmount?: string;
-  }>> {
+  ): Promise<
+    Array<
+      LedgerEntry & {
+        quantityKg?: string;
+        ratePerKg?: string;
+        totalAmount?: string;
+      }
+    >
+  > {
     const result = await this.ledgerRepo
       .createQueryBuilder('le')
       .leftJoin(
@@ -59,6 +74,40 @@ export class LedgerRepository {
         'brokerage_sales',
         'brokerageSale',
         "brokerageSale.id = le.source_id AND le.source_type = 'sale'",
+      )
+      .leftJoin(
+        'wastage_purchases',
+        'wastagePurchase',
+        "wastagePurchase.id = le.source_id AND le.source_type = 'purchase'",
+      )
+      .leftJoin(
+        'wastage_sales',
+        'wastageSale',
+        "wastageSale.id = le.source_id AND le.source_type = 'sale'",
+      )
+      .leftJoin(
+        'shop_sales',
+        'shopSale',
+        "shopSale.id = le.source_id AND le.source_type = 'sale'",
+      )
+      .leftJoin(
+        'party_payments',
+        'partyPayment',
+        "partyPayment.id = le.source_id AND le.source_type = 'payment'",
+      )
+      .leftJoin(
+        'investment_payments',
+        'investmentPayment',
+        "investmentPayment.id = le.source_id AND le.source_type = 'payment'",
+      )
+      .addSelect(
+        `CASE le.source_type
+          WHEN 'purchase' THEN COALESCE(supplyPurchase.notes, brokeragePurchase.description, wastagePurchase.notes)
+          WHEN 'sale' THEN COALESCE(supplySale.notes, brokerageSale.description, wastageSale.notes, shopSale.notes)
+          WHEN 'payment' THEN COALESCE(partyPayment.notes, investmentPayment.notes)
+          ELSE le.description
+        END`,
+        'transactionNotes',
       )
       .addSelect(
         'COALESCE(supplyPurchase.quantity_kg, supplySale.quantity_kg, brokeragePurchase.quantity_kg, brokerageSale.quantity_kg)',
@@ -85,8 +134,12 @@ export class LedgerRepository {
         transactionQuantityKg?: string;
         transactionRatePerKg?: string;
         transactionTotalAmount?: string;
+        transactionNotes: string | null;
       };
       return Object.assign(entry, {
+        // Read the original note; never substitute an accounting narration.
+        // This only changes the response, not the saved ledger entry.
+        description: raw.transactionNotes,
         quantityKg: raw.transactionQuantityKg,
         ratePerKg: raw.transactionRatePerKg,
         totalAmount: raw.transactionTotalAmount,

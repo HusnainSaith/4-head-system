@@ -51,6 +51,7 @@ const {
     paymentMethod: "cash" as const,
     amountReceived: "1750.00",
     outstandingAmount: "0.00",
+    notes: "Saved transaction note",
     saleDate: "2026-07-12",
     departmentId: "dept1",
     createdAt: "2026-07-12T00:00:00Z",
@@ -188,6 +189,7 @@ describe("ShopSalesPage", () => {
   });
   it("renders dressed weight and backend-derived margin", () => {
     wrap(<ShopSalesPage />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
     expect(screen.getByText("Walk-in Customer")).toBeInTheDocument();
     expect(screen.getByText("5.000 kg")).toBeInTheDocument();
     expect(screen.getByText(/60/)).toBeInTheDocument();
@@ -195,12 +197,14 @@ describe("ShopSalesPage", () => {
 
   it("opens record sale dialog with stock hint", () => {
     wrap(<ShopSalesPage />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
     expect(screen.getByText(/Available stock: 30.000 kg/i)).toBeInTheDocument();
   });
 
   it("requests customers within the backend pagination limit", () => {
     wrap(<ShopSalesPage />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
 
     expect(mockListPartiesQuery).toHaveBeenCalledWith(
@@ -211,6 +215,7 @@ describe("ShopSalesPage", () => {
 
   it("shows insufficient-stock error when dressed quantity exceeds available", () => {
     wrap(<ShopSalesPage />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
     const quantityInput = screen.getByLabelText(/dressed weight/i);
     fireEvent.change(quantityInput, { target: { value: "999" } });
@@ -222,6 +227,7 @@ describe("ShopSalesPage", () => {
 
   it("shows inline new customer form when toggled", () => {
     wrap(<ShopSalesPage />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
     fireEvent.click(screen.getByRole("button", { name: /\+ new customer/i }));
     expect(screen.getByPlaceholderText(/customer name/i)).toBeInTheDocument();
@@ -229,6 +235,7 @@ describe("ShopSalesPage", () => {
 
   it("submits dressed-sale inputs and renders the backend-WAC preview", () => {
     wrap(<ShopSalesPage />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
     fireEvent.change(screen.getByLabelText(/dressed weight/i), {
       target: { value: "30" },

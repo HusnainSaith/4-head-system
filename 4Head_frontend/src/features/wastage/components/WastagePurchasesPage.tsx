@@ -1,3 +1,4 @@
+import { notesColumn } from "@/components/common/TransactionNotes";
 import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { MoreHorizontal, Plus } from "lucide-react";
@@ -133,6 +134,7 @@ export function WastagePurchasesPage() {
   );
 
   const columns: DataTableColumn<WastagePurchase>[] = [
+    notesColumn(),
     {
       id: "party",
       header: "Shop owner",

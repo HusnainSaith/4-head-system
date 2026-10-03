@@ -1,4 +1,3 @@
-import { BadRequestException } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
 import { LedgerService } from '../ledger/ledger.service';
 import {
@@ -147,15 +146,39 @@ describe('PartiesService department payment validation', () => {
     );
   });
 
-  it('rejects payment amounts above the selected department balance', async () => {
-    ledger.getPartyDepartmentBalance.mockResolvedValue('-99.99');
-
-    await expect(service.recordPayment('party-1', payment)).rejects.toThrow(
-      new BadRequestException(
-        'Payment amount cannot exceed the outstanding party balance',
-      ),
+  it('records payment overages as an advance receivable', async () => {
+    ledger.getPartyDepartmentBalance.mockResolvedValue('99.99');
+    const paymentRepository = {
+      create: jest.fn((value) => value),
+      save: jest.fn(async (value) => ({ id: 'payment-1', ...value })),
+    };
+    (dataSource.transaction as unknown as jest.Mock).mockImplementation(
+      async (callback: (manager: EntityManager) => Promise<unknown>) =>
+        callback({
+          getRepository: () => paymentRepository,
+        } as unknown as EntityManager),
     );
-    expect(dataSource.transaction).not.toHaveBeenCalled();
+
+    await expect(
+      service.recordPayment('party-1', {
+        ...payment,
+        amount: 100,
+        direction: PartyPaymentDirection.PAID,
+      }),
+    ).resolves.toMatchObject({ success: true });
+    expect(ledger.post).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({
+          accountCode: 'accounts_payable',
+          amount: '99.99',
+        }),
+        expect.objectContaining({
+          accountCode: 'accounts_receivable',
+          amount: '0.01',
+        }),
+      ]),
+      expect.anything(),
+    );
   });
 
   it('settles an investor opening payable through the normal party workflow', async () => {

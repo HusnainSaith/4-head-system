@@ -30,6 +30,7 @@ import {
   useRecordPartyPaymentMutation,
 } from "../partiesApi";
 import type { DepartmentPartyBalance } from "../types";
+import { DepartmentPaymentHistory } from "./DepartmentPaymentHistory";
 
 const money = new Intl.NumberFormat("en-PK", {
   style: "currency",
@@ -110,6 +111,7 @@ export function DepartmentBalancesPanel({
         parties={data?.parties ?? []}
         onClose={() => setDirection(null)}
       />
+      {data?.departmentId ? <DepartmentPaymentHistory key={data.departmentId} departmentId={data.departmentId} /> : null}
     </section>
   );
 }
@@ -150,7 +152,8 @@ function DepartmentPaymentDialog({
   const selected = eligibleParties.find((party) => party.partyId === partyId);
   const available = Math.abs(Number(selected?.balance ?? 0));
   const isAdvancePayment =
-    direction === "paid" && Number(selected?.balance ?? 0) <= 0;
+    direction === "paid" &&
+    (Number(selected?.balance ?? 0) <= 0 || Number(amount) > available);
   const isReceiptBalanceHint =
     direction === "received" && Number(amount) > 0 &&
     (Number(selected?.balance ?? 0) > 0 || Number(amount) > available);
@@ -174,10 +177,6 @@ function DepartmentPaymentDialog({
     }
     if (!Number.isFinite(value) || value <= 0) {
       setError("Enter a positive amount.");
-      return;
-    }
-    if (direction === "paid" && !isAdvancePayment && value > available) {
-      setError("Amount cannot exceed the outstanding party balance.");
       return;
     }
     try {

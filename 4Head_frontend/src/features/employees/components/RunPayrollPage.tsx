@@ -30,6 +30,8 @@ export function RunPayrollPage() {
   const [month, setMonth] = useState(now.getMonth() + 1);
   const [year, setYear] = useState(now.getFullYear());
   const [recoverAdvances, setRecoverAdvances] = useState(false);
+  const [deduction, setDeduction] = useState("0");
+  const [deductionReason, setDeductionReason] = useState("");
   const employees = useListEmployeesQuery();
   const advances = useListAdvancesQuery(employeeId, { skip: !employeeId });
   const bonuses = useListBonusesQuery(employeeId, { skip: !employeeId });
@@ -49,13 +51,21 @@ export function RunPayrollPage() {
     <PageContainer>
       <PageHeader
         title="Run Payroll"
-        description="Payroll is run for one employee at a time; the backend does not support department batches."
+        description="Calculate monthly salary, including bonuses, leave charges, fines, and optional advance recovery."
       />
       <Card>
         <CardContent className="space-y-4 pt-6">
           <div>
             <Label>Employee</Label>
-            <Select value={employeeId} onValueChange={setEmployeeId}>
+            <Select
+              value={employeeId}
+              onValueChange={(value) => {
+                setEmployeeId(value);
+                setDeduction("0");
+                setDeductionReason("");
+                setRecoverAdvances(false);
+              }}
+            >
               <SelectTrigger>
                 <SelectValue placeholder="Select employee" />
               </SelectTrigger>
@@ -93,10 +103,40 @@ export function RunPayrollPage() {
               />
             </div>
           </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="payroll-deduction">
+                Leave charges / fine amount
+              </Label>
+              <Input
+                id="payroll-deduction"
+                type="number"
+                min="0"
+                step="0.01"
+                value={deduction}
+                onChange={(event) => setDeduction(event.target.value)}
+              />
+              <p className="text-sm text-muted-foreground">
+                This amount is subtracted from this month's salary.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="payroll-deduction-reason">
+                Deduction reason (optional)
+              </Label>
+              <Input
+                id="payroll-deduction-reason"
+                maxLength={255}
+                value={deductionReason}
+                onChange={(event) => setDeductionReason(event.target.value)}
+              />
+            </div>
+          </div>
           {employee ? (
             <div className="rounded border p-4 text-sm">
               <p className="font-medium">Known inputs before processing</p>
               <p>Base salary: {employee.baseSalary}</p>
+              <p>Leave charges / fine: {Number(deduction || 0).toFixed(2)}</p>
               <p>
                 Bonuses in period:{" "}
                 {periodBonuses.map((b) => b.amount).join(", ") || "None"}
@@ -130,12 +170,39 @@ export function RunPayrollPage() {
             disabled={!employeeId}
             isLoading={state.isLoading}
             onClick={async () => {
+              const value = Number(deduction || "0");
+              const gross =
+                Number(employee?.baseSalary ?? 0) +
+                periodBonuses.reduce(
+                  (sum, bonus) => sum + Number(bonus.amount),
+                  0,
+                );
+              if (
+                !Number.isInteger(month) ||
+                month < 1 ||
+                month > 12 ||
+                !Number.isInteger(year) ||
+                year < 2000 ||
+                year > 9999
+              )
+                return toast.error("Enter a valid payroll month and year");
+              if (
+                !Number.isFinite(value) ||
+                value < 0 ||
+                value > gross ||
+                Math.abs(value * 100 - Math.round(value * 100)) > 0.000001
+              )
+                return toast.error(
+                  "Enter a deduction between zero and the salary plus bonuses, with at most two decimal places",
+                );
               try {
                 const result = await run({
                   employeeId,
                   periodMonth: month,
                   periodYear: year,
                   recoverAdvances,
+                  manualDeduction: value,
+                  deductionReason: deductionReason.trim() || undefined,
                 }).unwrap();
                 toast.success("Payroll run completed");
                 navigate(`/payroll/runs/${result.data.id}`);

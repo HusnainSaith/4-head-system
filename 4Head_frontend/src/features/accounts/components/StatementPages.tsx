@@ -162,7 +162,7 @@ export function BankStatementPage() {
   const [from, setFrom] = useState(params.get("from") ?? yearStart);
   const [to, setTo] = useState(params.get("to") ?? today);
   const method = (params.get("method") || undefined) as BankMethod | undefined;
-  const q = useGetBankStatementQuery({ id, from, to, method }, { skip: !id });
+  const q = useGetBankStatementQuery({ id, from, to, method }, { skip: !id, refetchOnMountOrArgChange: true });
   if (q.isLoading) return <PageSkeleton rows={6} />;
   if (q.isError || !q.data?.data)
     return (
@@ -210,7 +210,7 @@ export function CashStatementPage() {
   const [to, setTo] = useState(today);
   const q = useGetCashStatementQuery(
     { id, from, to },
-    { skip: !id },
+    { skip: !id, refetchOnMountOrArgChange: true },
   );
   if (q.isLoading) return <PageSkeleton rows={6} />;
   if (q.isError || !q.data?.data)

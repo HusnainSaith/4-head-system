@@ -1,3 +1,4 @@
+import { upgradeExistingDesktopSchema } from './desktop-schema-upgrade';
 import * as bcrypt from 'bcryptjs';
 import { existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
@@ -13,6 +14,13 @@ import { seedSupplyWastageCustomers } from './seeds/supply-wastage-customers.see
 export async function prepareDesktopDatabase(
   dataSource: DataSource,
 ): Promise<void> {
+  if (
+    process.env.NODE_ENV === 'desktop' &&
+    process.env.DESKTOP_SCHEMA_UPGRADE === 'true' &&
+    process.env.DESKTOP_AUTO_MIGRATE !== 'true'
+  )
+    await upgradeExistingDesktopSchema(dataSource);
+
   if (process.env.DESKTOP_AUTO_MIGRATE === 'true') {
     await dataSource.runMigrations({ transaction: 'each' });
   }

@@ -1,4 +1,17 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  ParseUUIDPipe,
+  Put,
+  Post,
+  Query,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { PartnerSharesDto } from './dto/partner-shares.dto';
+import { PostPartnerProfitDto } from './dto/post-partner-profit.dto';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ReportsService } from './reports.service';
@@ -64,6 +77,34 @@ export class ReportsController extends BaseController {
         startDate ?? from,
         endDate ?? to,
       ),
+    );
+  }
+
+  @Post('partner-profit-share/:departmentId/post')
+  @Roles(RoleEnum.OWNER)
+  postPartnerProfit(
+    @Param('departmentId', ParseUUIDPipe) departmentId: string,
+    @Body() dto: PostPartnerProfitDto,
+    @Req() req: { user: { id: string } },
+  ) {
+    return this.handleAsyncOperation(
+      this.reportsService.postPartnerProfit(departmentId, dto, req.user.id),
+    );
+  }
+
+  @Put('partner-shares/:departmentId')
+  @Roles(RoleEnum.OWNER)
+  @ApiOperation({
+    summary:
+      'Configure ownership for partner profit previews and future postings',
+  })
+  savePartnerShares(
+    @Param('departmentId', ParseUUIDPipe) departmentId: string,
+    @Body() dto: PartnerSharesDto,
+    @Req() req: { user: { id: string } },
+  ) {
+    return this.handleAsyncOperation(
+      this.reportsService.savePartnerShares(departmentId, dto, req.user.id),
     );
   }
 

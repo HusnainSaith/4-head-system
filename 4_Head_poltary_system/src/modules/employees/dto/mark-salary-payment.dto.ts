@@ -14,5 +14,8 @@ export class MarkSalaryPaymentDto extends PaymentAccountSelectionDto {
   @IsEnum(['cash', 'bank'])
   paymentMethod: 'cash' | 'bank';
 
-  @IsOptional() @IsNumber() @IsPositive() amount?: number;
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @IsPositive()
+  amount?: number;
 }

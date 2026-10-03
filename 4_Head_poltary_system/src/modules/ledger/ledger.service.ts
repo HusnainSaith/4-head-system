@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { ReportsService } from '../reports/reports.service';
+import { centsToMoney, moneyToCents } from '../../common/utils/money.util';
 import { EntityManager } from 'typeorm';
 import { LedgerRepository } from './ledger.repository';
 import { LedgerEntry } from './entities/ledger-entry.entity';
@@ -23,7 +25,10 @@ export interface PostEntryDto {
 
 @Injectable()
 export class LedgerService {
-  constructor(private readonly ledgerRepo: LedgerRepository) {}
+  constructor(
+    private readonly ledgerRepo: LedgerRepository,
+    @Optional() private readonly reports?: ReportsService,
+  ) {}
 
   async post(entries: PostEntryDto[], manager?: EntityManager): Promise<void> {
     const debitCents = entries
@@ -86,9 +91,32 @@ export class LedgerService {
       };
     });
 
+    const accruals = (
+      (await this.reports?.getPartnerAccruals(from, to, [partyId])) ?? []
+    ).filter((p) => p.partyId === partyId);
+    const accrued = accruals.reduce(
+      (sum, p) => sum + moneyToCents(p.profitShare),
+      0n,
+    );
+    const closing = centsToMoney(BigInt(balanceCents) + accrued);
+    // A derived accrual is shown explicitly alongside immutable cash/ledger entries.
+    const profitEntries = accruals.map((p) => {
+      balanceCents += Number(moneyToCents(p.profitShare));
+      return {
+        id: `partner-accrual-${p.departmentId}-${p.userId}`,
+        departmentId: p.departmentId,
+        partyId,
+        entryDate: to ?? new Date().toISOString().slice(0, 10),
+        entryType: moneyToCents(p.profitShare) < 0n ? 'debit' : 'credit',
+        amount: p.profitShare.replace('-', ''),
+        sourceType: 'partner_profit_accrual',
+        description: `${p.departmentName} profit / loss (${p.ownershipLabel}) — continuously calculated`,
+        runningBalance: this.fromCents(balanceCents),
+      };
+    });
     return {
-      entries: withBalance,
-      closingBalance: this.fromCents(balanceCents),
+      entries: [...withBalance, ...profitEntries],
+      closingBalance: closing,
     };
   }
 
@@ -100,16 +128,50 @@ export class LedgerService {
     return this.ledgerRepo.findBySource(sourceType, sourceId, manager);
   }
 
-  async getPartyBalances(
-    partyIds: string[],
-  ): Promise<Map<string, string>> {
+  async getPartyBalances(partyIds: string[]): Promise<Map<string, string>> {
     const rows = await this.ledgerRepo.getPartyBalances(partyIds);
-    return new Map(rows.map((r) => [r.partyId, Number(r.balance).toFixed(2)]));
+    const balances = new Map<string, string>(
+      rows.map((r) => [r.partyId, Number(r.balance).toFixed(2)]),
+    );
+    if (!partyIds.length) return balances;
+    const requestedParties = new Set(partyIds);
+    for (const partner of (await this.reports?.getPartnerAccruals(
+      undefined,
+      undefined,
+      partyIds,
+    )) ?? []) {
+      if (requestedParties.has(partner.partyId!))
+        balances.set(
+          partner.partyId!,
+          centsToMoney(
+            moneyToCents(balances.get(partner.partyId!) ?? '0.00') +
+              moneyToCents(partner.profitShare),
+          ),
+        );
+    }
+    return balances;
   }
 
   async getDepartmentPartyBalances(departmentId: string) {
     const parties =
       await this.ledgerRepo.getDepartmentPartyBalances(departmentId);
+    for (const partner of (await this.reports?.getPartnerAccruals()) ?? []) {
+      if (partner.departmentId !== departmentId) continue;
+      let party = parties.find((p) => p.partyId === partner.partyId);
+      if (!party) {
+        party = {
+          partyId: partner.partyId!,
+          partyName: partner.partnerName,
+          partyType: partner.partyType ?? 'partner',
+          balance: '0.00',
+        };
+        parties.push(party);
+      }
+      party.balance = centsToMoney(
+        moneyToCents(Number(party.balance).toFixed(2)) +
+          moneyToCents(partner.profitShare),
+      );
+    }
     let receivableCents = 0;
     let payableCents = 0;
     for (const party of parties) {
@@ -195,7 +257,15 @@ export class LedgerService {
             : -this.toCents(e.amount)),
         0,
       );
-    return this.fromCents(sumCents);
+    const pending =
+      accountCode === 'payroll_expense' && entryType === 'debit'
+        ? await this.ledgerRepo.pendingPayrollBonuses(
+            departmentId,
+            new Date(from),
+            new Date(to),
+          )
+        : 0;
+    return this.fromCents(sumCents + Math.round(pending * 100));
   }
 
   private toCents(value: string): number {

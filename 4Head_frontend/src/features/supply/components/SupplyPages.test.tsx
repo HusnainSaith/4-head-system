@@ -67,6 +67,7 @@ vi.mock("../supplyApi", () => ({
             paymentMethod: "cash",
             amountPaid: "500",
             outstandingAmount: "1500",
+            notes: "Saved transaction note",
             purchaseDate: "2026-07-12",
             status: "posted",
             vehicle: { registrationNumber: "ABC-1" },
@@ -92,6 +93,7 @@ vi.mock("../supplyApi", () => ({
             paymentMethod: "credit",
             amountReceived: "250",
             outstandingAmount: "1250",
+            notes: "Saved transaction note",
             saleDate: "2026-07-12",
             status: "posted",
           },
@@ -184,24 +186,27 @@ describe("Supply pages", () => {
   });
   it("renders purchases with backend payment and relation values", () => {
     render(<SupplyPurchasesPage />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
     expect(screen.getByText("Broker One")).toBeInTheDocument();
     expect(screen.getByText("ABC-1")).toBeInTheDocument();
     expect(screen.getAllByText(/1,500/).length).toBeGreaterThan(0);
   });
   it("renders external sales explanation and authoritative commission", () => {
     render(<SupplySalesPage />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
     expect(
       screen.getByText(/external sales to independent shop owners/i),
     ).toBeInTheDocument();
     expect(screen.getByText("Shop One")).toBeInTheDocument();
     expect(screen.getByText(/75/)).toBeInTheDocument();
   });
-  it("requests shop-owner parties when the sale form opens", () => {
+  it("requests department parties for the admin when the sale form opens", () => {
     render(<SupplySalesPage />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
     expect(listParties).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "shop_owner" }),
-      expect.anything(),
+      expect.objectContaining({ departmentId: "d1", type: undefined }),
+      { skip: false },
     );
     expect(screen.getByText(/Available: 25.000 kg/i)).toBeInTheDocument();
   });
@@ -233,3 +238,5 @@ describe("Supply pages", () => {
     expect(screen.getByText(/400/)).toBeInTheDocument();
   });
 });
+
+vi.mock("@/features/departments/departmentsApi", () => ({ useListDepartmentsQuery: () => ({ data: { data: [{ id: "d1", type: "SUPPLY", name: "Supply" }] } }) }));

@@ -61,6 +61,7 @@ vi.mock("../brokerageApi", () => ({
             amountPaid: "400.00",
             outstandingAmount: "600.00",
             paymentMethod: "credit",
+            description: "Saved transaction note",
             purchaseDate: "2026-07-13",
           },
         ],
@@ -83,6 +84,7 @@ vi.mock("../brokerageApi", () => ({
             amountReceived: "250.00",
             outstandingAmount: "350.00",
             paymentMethod: "credit",
+            description: "Saved transaction note",
             saleDate: "2026-07-13",
           },
         ],
@@ -115,6 +117,7 @@ describe("Brokerage transaction balances", () => {
   it("shows purchase paid/payable values and submits amountPaid", async () => {
     createPurchase.mockReturnValue({ unwrap: () => Promise.resolve({}) });
     render(<BrokerageTransactionsPage kind="purchase" />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
 
     expect(screen.getByText("Initial payable")).toBeInTheDocument();
     expect(screen.getByText(/600/)).toBeInTheDocument();
@@ -139,6 +142,7 @@ describe("Brokerage transaction balances", () => {
     "allows a broker party in a Brokerage %s",
     async (kind, buttonName, partyLabel) => {
       render(<BrokerageTransactionsPage kind={kind} />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: buttonName }));
       fireEvent.click(screen.getByLabelText(partyLabel));
@@ -152,6 +156,7 @@ describe("Brokerage transaction balances", () => {
   it("shows sale received/receivable values and submits amountReceived", async () => {
     createSale.mockReturnValue({ unwrap: () => Promise.resolve({}) });
     render(<BrokerageTransactionsPage kind="sale" />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
 
     expect(screen.getByText("Initial receivable")).toBeInTheDocument();
     expect(screen.getByText(/350/)).toBeInTheDocument();
@@ -172,6 +177,7 @@ describe("Brokerage transaction balances", () => {
   it("records a Supply destination with an initial received amount", async () => {
     createSale.mockReturnValue({ unwrap: () => Promise.resolve({}) });
     render(<BrokerageTransactionsPage kind="sale" />);
+    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
     fireEvent.click(screen.getAllByRole("combobox")[0]);

@@ -150,6 +150,11 @@ export interface RecordPaymentResponseData {
   notes?: string;
 }
 
+export interface DepartmentPayment extends Omit<RecordPaymentResponseData, "notes"> {
+  partyName: string;
+  notes?: string | null;
+}
+
 /** Party Settlement Request DTO */
 export interface CreatePartySettlementRequest {
   payablePartyId: string;

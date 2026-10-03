@@ -44,7 +44,7 @@ vi.mock("@/features/vehicles/vehiclesApi", () => ({
 }));
 vi.mock("../wastageApi", () => ({
   useListPurchasesQuery: () => ({
-    data: { data: [] },
+    data: { data: [{ id: "saved", quantityKg: "5", ratePerKg: "20", totalAmount: "100", amountPaid: "100", amountReceived: "100", outstandingAmount: "0", commissionPerKg: "0", paymentMethod: "cash", purchaseDate: "2026-09-29", saleDate: "2026-09-29", notes: "Saved wastage note" }] },
     isLoading: false,
     isError: false,
   }),
@@ -52,7 +52,7 @@ vi.mock("../wastageApi", () => ({
   useUpdatePurchaseMutation: () => [vi.fn(), { isLoading: false }],
   useDeletePurchaseMutation: () => [vi.fn(), { isLoading: false }],
   useListSalesQuery: () => ({
-    data: { data: [] },
+    data: { data: [{ id: "saved", quantityKg: "5", ratePerKg: "20", totalAmount: "100", amountPaid: "100", amountReceived: "100", outstandingAmount: "0", commissionPerKg: "0", paymentMethod: "cash", purchaseDate: "2026-09-29", saleDate: "2026-09-29", notes: "Saved wastage note" }] },
     isLoading: false,
     isError: false,
   }),
@@ -93,6 +93,7 @@ describe("Wastage pages", () => {
   it("renders purchases and completes its create flow", async () => {
     createPurchase.mockReturnValue({ unwrap: () => Promise.resolve({}) });
     render(<WastagePurchasesPage />);
+    expect(screen.getByText("Saved wastage note")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /record purchase/i }));
     const numbers = screen.getAllByRole("spinbutton");
     fireEvent.change(numbers[0], { target: { value: "5" } });
@@ -117,6 +118,7 @@ describe("Wastage pages", () => {
         }),
     });
     render(<WastageSalesPage />);
+    expect(screen.getByText("Saved wastage note")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
     expect(screen.getByText(/available: 12.500kg/i)).toBeInTheDocument();
     const numbers = screen.getAllByRole("spinbutton");
@@ -148,3 +150,5 @@ describe("Wastage pages", () => {
       expect(screen.getByText(label)).toBeInTheDocument();
   });
 });
+
+vi.mock("@/features/invoices/components/InvoiceButton", () => ({ InvoiceButton: () => <button>Print</button> }));

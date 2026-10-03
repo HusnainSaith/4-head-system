@@ -17,7 +17,6 @@ export interface ConsolidatedProfitLoss {
   totalExpenses: string;
   totalPayroll: string;
   netProfit: string;
-  perPartnerShare: string;
 }
 
 export interface DepartmentProfitLoss {
@@ -33,9 +32,8 @@ export interface DepartmentProfitLoss {
   netProfit: string;
 }
 
-export interface PartnerProfitShare extends ConsolidatedProfitLoss {
-  partnerShare: string;
-}
+import type { PartnerProfitShare } from "@/features/reports/types";
+export type { PartnerProfitShare } from "@/features/reports/types";
 
 export interface OutstandingBalance {
   partyId: string | null;

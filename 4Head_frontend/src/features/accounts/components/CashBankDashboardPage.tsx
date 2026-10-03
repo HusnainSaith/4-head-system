@@ -32,7 +32,7 @@ export function CashBankDashboardPage() {
   const [adding, setAdding] = useState(false);
   const [adjusting, setAdjusting] = useState<AdjustState | null>(null);
   const [bankAdjusting, setBankAdjusting] = useState<BankAdjustState | null>(null);
-  const query = useGetAccountsSummaryQuery();
+  const query = useGetAccountsSummaryQuery(undefined, { refetchOnMountOrArgChange: true });
 
   if (query.isLoading) return <PageSkeleton rows={6} />;
   if (query.isError || !query.data?.data)
@@ -50,10 +50,15 @@ export function CashBankDashboardPage() {
         title="Cash & Bank"
         description="Live balances derived from posted ledger entries."
         actions={
+          <div className="flex gap-2">
+          <Button variant="outline" onClick={() => void query.refetch()} disabled={query.isFetching}>
+            {query.isFetching ? "Refreshing…" : "Refresh balances"}
+          </Button>
           <Button onClick={() => setAdding(true)}>
             <Plus className="h-4 w-4" />
             Add bank account
           </Button>
+          </div>
         }
       />
 

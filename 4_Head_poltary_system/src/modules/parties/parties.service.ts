@@ -5,7 +5,14 @@ import {
   Logger,
   Optional,
 } from '@nestjs/common';
-import { DataSource, EntityManager, In } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  In,
+  Between,
+  MoreThanOrEqual,
+  LessThanOrEqual,
+} from 'typeorm';
 import { PartiesRepository } from './parties.repository';
 import { CreatePartyDto } from './dto/create-party.dto';
 import { UpdatePartyDto } from './dto/update-party.dto';
@@ -37,6 +44,7 @@ import {
   UpdatePartySettlementDto,
 } from './dto/create-party-settlement.dto';
 import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
+import { ListPartyPaymentsDto } from './dto/list-party-payments.dto';
 
 @Injectable()
 export class PartiesService {
@@ -48,6 +56,56 @@ export class PartiesService {
     @Optional() private readonly invoicesService?: InvoicesService,
     @Optional() private readonly notificationsService?: NotificationsService,
   ) {}
+
+  async listPayments({
+    departmentId,
+    page = 1,
+    limit = 10,
+    from,
+    to,
+  }: ListPartyPaymentsDto) {
+    if (from && to && from > to)
+      throw new BadRequestException(
+        'Starting date must be on or before ending date',
+      );
+    const paymentDate =
+      from && to
+        ? Between(from, to)
+        : from
+          ? MoreThanOrEqual(from)
+          : to
+            ? LessThanOrEqual(to)
+            : undefined;
+    const repository = this.dataSource.getRepository(PartyPayment);
+    const [payments, total] = await repository.findAndCount({
+      where: { departmentId, ...(paymentDate ? { paymentDate } : {}) },
+      order: { paymentDate: 'DESC', createdAt: 'DESC', id: 'DESC' },
+      skip: (page - 1) * limit,
+      take: limit,
+    });
+    const partyIds = [...new Set(payments.map((payment) => payment.partyId))];
+    const parties = partyIds.length
+      ? await this.dataSource.getRepository(Party).find({
+          where: { id: In(partyIds) },
+          select: { id: true, name: true },
+          withDeleted: true,
+        })
+      : [];
+    const names = new Map(parties.map((party) => [party.id, party.name]));
+    return {
+      items: payments.map((payment) => ({
+        id: payment.id,
+        partyId: payment.partyId,
+        partyName: names.get(payment.partyId) ?? 'Unknown party',
+        amount: payment.amount,
+        direction: payment.direction,
+        paymentDate: payment.paymentDate,
+        paymentMethod: payment.paymentMethod,
+        notes: payment.notes,
+      })),
+      pagination: { page, limit, total },
+    };
+  }
 
   async create(dto: CreatePartyDto) {
     const { openingBalance, departmentIds, ...rest } = dto;
@@ -299,12 +357,11 @@ export class PartiesService {
   }
 
   async adjustBalance(id: string, dto: AdjustPartyBalanceDto, actorId: string) {
-    const partyResponse = await this.findById(id);
-    const party = partyResponse.data;
+    await this.findById(id);
     const entryDate = dto.date ? new Date(dto.date) : new Date();
-    const adjustmentId = await this.dataSource.query(
-      `SELECT gen_random_uuid() AS id`,
-    ).then((rows: { id: string }[]) => rows[0].id);
+    const adjustmentId = await this.dataSource
+      .query(`SELECT gen_random_uuid() AS id`)
+      .then((rows: { id: string }[]) => rows[0].id);
     const isIncrease = dto.amount > 0;
     await this.dataSource.query(
       `INSERT INTO ledger_entries
@@ -379,17 +436,6 @@ export class PartiesService {
       departmentId,
     );
     const balance = Number(currentBalance ?? 0);
-    // For 'paid' direction: cap only positive payables; zero and negative
-    // balances are valid advance payments.
-    if (
-      dto.direction !== PartyPaymentDirection.RECEIVED &&
-      balance > 0 &&
-      dto.amount > balance
-    ) {
-      throw new BadRequestException(
-        'Payment amount cannot exceed the outstanding party balance',
-      );
-    }
     const payment = await this.dataSource.transaction(async (manager) => {
       const repository = manager.getRepository(PartyPayment);
       const saved = await repository.save(
@@ -405,7 +451,11 @@ export class PartiesService {
         }),
       );
       const received = dto.direction === PartyPaymentDirection.RECEIVED;
-      const isAdvancePayment = !received && balance <= 0;
+      const payableAmount = !received
+        ? Math.min(Math.max(balance, 0), dto.amount)
+        : 0;
+      const advanceAmount = !received ? dto.amount - payableAmount : 0;
+      const isAdvancePayment = !received && payableAmount === 0;
       const fundsAccount = dto.paymentMethod === 'bank' ? 'bank' : 'cash';
 
       const receivedEntries = received
@@ -425,7 +475,8 @@ export class PartiesService {
             // A receipt from a payable party increases the payable balance.
             {
               departmentId,
-              accountCode: balance > 0 ? 'accounts_payable' : 'accounts_receivable',
+              accountCode:
+                balance > 0 ? 'accounts_payable' : 'accounts_receivable',
               partyId: id,
               entryType: 'credit' as const,
               amount: saved.amount,
@@ -437,39 +488,55 @@ export class PartiesService {
           ]
         : null;
 
-      await this.ledgerService.post(
-        received
-          ? receivedEntries!
-          : [
+      const paymentDescription =
+        dto.notes ??
+        (isAdvancePayment ? 'Advance payment paid' : 'Payment paid');
+      const paidEntries = [
+        ...(payableAmount > 0
+          ? [
               {
                 departmentId,
-                accountCode: isAdvancePayment
-                  ? 'accounts_receivable'
-                  : 'accounts_payable',
+                accountCode: 'accounts_payable',
                 partyId: id,
-                entryType: 'debit',
-                amount: saved.amount,
+                entryType: 'debit' as const,
+                amount: payableAmount.toFixed(2),
                 entryDate: new Date(dto.paymentDate),
                 sourceType: 'payment',
                 sourceId: saved.id,
-                description:
-                  dto.notes ??
-                  (isAdvancePayment ? 'Advance payment paid' : 'Payment paid'),
+                description: paymentDescription,
               },
+            ]
+          : []),
+        ...(advanceAmount > 0 || payableAmount === 0
+          ? [
               {
                 departmentId,
-                accountCode: fundsAccount,
-                ...paymentAccountLink(dto),
-                entryType: 'credit',
-                amount: saved.amount,
+                accountCode: 'accounts_receivable',
+                partyId: id,
+                entryType: 'debit' as const,
+                amount:
+                  advanceAmount > 0 ? advanceAmount.toFixed(2) : saved.amount,
                 entryDate: new Date(dto.paymentDate),
                 sourceType: 'payment',
                 sourceId: saved.id,
-                description:
-                  dto.notes ??
-                  (isAdvancePayment ? 'Advance payment paid' : 'Payment paid'),
+                description: paymentDescription,
               },
-            ],
+            ]
+          : []),
+        {
+          departmentId,
+          accountCode: fundsAccount,
+          ...paymentAccountLink(dto),
+          entryType: 'credit' as const,
+          amount: saved.amount,
+          entryDate: new Date(dto.paymentDate),
+          sourceType: 'payment',
+          sourceId: saved.id,
+          description: paymentDescription,
+        },
+      ];
+      await this.ledgerService.post(
+        received ? receivedEntries! : paidEntries,
         manager,
       );
       await this.mirrorInternalDepartmentPayment(
@@ -535,7 +602,7 @@ export class PartiesService {
     partyId: string,
     paymentId: string,
     dto: Partial<RecordPartyPaymentDto>,
-    actorId?: string,
+    _actorId?: string,
   ) {
     const partyResponse = await this.findById(partyId);
     const party = partyResponse.data;
@@ -546,14 +613,26 @@ export class PartiesService {
       });
       if (!payment) throw new NotFoundException('Party payment not found');
       if (party.partyType === PartyTypeEnum.INTERNAL_DEPARTMENT)
-        throw new BadRequestException('Internal department payments cannot be edited here');
+        throw new BadRequestException(
+          'Internal department payments cannot be edited here',
+        );
       const dateOnly = Object.keys(dto).every((key) => key === 'paymentDate');
       const nextMethod = dto.paymentMethod ?? payment.paymentMethod;
+      const nextDirection = dto.direction ?? payment.direction;
+      const nextDescription =
+        dto.notes !== undefined
+          ? dto.notes.trim() ||
+            (nextDirection === PartyPaymentDirection.RECEIVED
+              ? 'Payment received'
+              : 'Payment paid')
+          : undefined;
       Object.assign(payment, {
         ...(dto.paymentDate ? { paymentDate: dto.paymentDate } : {}),
         ...(dto.amount !== undefined ? { amount: dto.amount.toFixed(2) } : {}),
         ...(dto.direction !== undefined ? { direction: dto.direction } : {}),
-        ...(dto.paymentMethod !== undefined ? { paymentMethod: nextMethod } : {}),
+        ...(dto.paymentMethod !== undefined
+          ? { paymentMethod: nextMethod }
+          : {}),
         ...(dto.notes !== undefined ? { notes: dto.notes } : {}),
         ...(dto.paymentMethod
           ? paymentAccountLink({
@@ -577,6 +656,8 @@ export class PartiesService {
           relations: { account: true },
         });
         for (const entry of entries) entry.amount = payment.amount;
+        if (nextDescription !== undefined)
+          for (const entry of entries) entry.description = nextDescription;
         await manager.getRepository(LedgerEntry).save(entries);
       }
       const saved = await repository.save(payment);
@@ -586,6 +667,34 @@ export class PartiesService {
       success: true,
       message: 'Payment updated successfully',
       data: updated,
+    };
+  }
+
+  async deletePayment(partyId: string, paymentId: string, _actorId?: string) {
+    const partyResponse = await this.findById(partyId);
+    const party = partyResponse.data;
+    if (party.partyType === PartyTypeEnum.INTERNAL_DEPARTMENT)
+      throw new BadRequestException(
+        'Internal department payments cannot be deleted here',
+      );
+
+    await this.dataSource.transaction(async (manager) => {
+      const payment = await manager.getRepository(PartyPayment).findOne({
+        where: { id: paymentId, partyId },
+      });
+      if (!payment) throw new NotFoundException('Party payment not found');
+
+      await manager.delete(LedgerEntry, {
+        sourceType: 'payment',
+        sourceId: payment.id,
+      });
+      await manager.delete(PartyPayment, payment.id);
+    });
+
+    return {
+      success: true,
+      message: 'Payment reversed and deleted successfully',
+      data: null,
     };
   }
 
@@ -769,10 +878,7 @@ export class PartiesService {
    * To reduce payable (positive): debit accounts_payable
    * To reduce receivable (negative): credit accounts_receivable
    */
-  async createPartySettlement(
-    dto: CreatePartySettlementDto,
-    actorId: string,
-  ) {
+  async createPartySettlement(dto: CreatePartySettlementDto, actorId: string) {
     if (dto.payablePartyId === dto.receivablePartyId) {
       throw new BadRequestException(
         'Payable party and receivable party must be different',
@@ -791,10 +897,11 @@ export class PartiesService {
       dto.payablePartyId,
       dto.departmentId,
     );
-    const receivableBalance = await this.ledgerService.getPartyDepartmentBalance(
-      dto.receivablePartyId,
-      dto.departmentId,
-    );
+    const receivableBalance =
+      await this.ledgerService.getPartyDepartmentBalance(
+        dto.receivablePartyId,
+        dto.departmentId,
+      );
 
     const payableBalanceNum = Number(payableBalance ?? '0');
     const receivableBalanceNum = Number(receivableBalance ?? '0');
@@ -893,10 +1000,12 @@ export class PartiesService {
     reversalReason: string,
     actorId: string,
   ) {
-    const settlement = await this.dataSource.getRepository(PartySettlement).findOne({
-      where: { id: settlementId },
-      relations: ['payableParty', 'receivableParty'],
-    });
+    const settlement = await this.dataSource
+      .getRepository(PartySettlement)
+      .findOne({
+        where: { id: settlementId },
+        relations: ['payableParty', 'receivableParty'],
+      });
 
     if (!settlement) {
       throw new NotFoundException('Settlement not found');
@@ -929,11 +1038,13 @@ export class PartiesService {
   }
 
   async listPartySettlements(departmentId?: string) {
-    const settlements = await this.dataSource.getRepository(PartySettlement).find({
-      where: departmentId ? { departmentId } : {},
-      relations: ['payableParty', 'receivableParty', 'department'],
-      order: { settlementDate: 'DESC', createdAt: 'DESC' },
-    });
+    const settlements = await this.dataSource
+      .getRepository(PartySettlement)
+      .find({
+        where: departmentId ? { departmentId } : {},
+        relations: ['payableParty', 'receivableParty', 'department'],
+        order: { settlementDate: 'DESC', createdAt: 'DESC' },
+      });
     return {
       success: true,
       message: 'Settlements retrieved successfully',
@@ -946,10 +1057,12 @@ export class PartiesService {
     dto: UpdatePartySettlementDto,
     actorId: string,
   ) {
-    const settlement = await this.dataSource.getRepository(PartySettlement).findOne({
-      where: { id: settlementId },
-      relations: ['payableParty', 'receivableParty', 'department'],
-    });
+    const settlement = await this.dataSource
+      .getRepository(PartySettlement)
+      .findOne({
+        where: { id: settlementId },
+        relations: ['payableParty', 'receivableParty', 'department'],
+      });
     if (!settlement) throw new NotFoundException('Settlement not found');
     if (settlement.status !== 'active') {
       throw new BadRequestException('Only active settlements can be edited');
@@ -982,7 +1095,9 @@ export class PartiesService {
     }
 
     const updated = await this.dataSource.transaction(async (manager) => {
-      const entryDate = new Date(dto.settlementDate ?? settlement.settlementDate);
+      const entryDate = new Date(
+        dto.settlementDate ?? settlement.settlementDate,
+      );
       if (delta !== 0) {
         const amount = Math.abs(delta).toFixed(2);
         await this.ledgerService.post(
@@ -1052,7 +1167,8 @@ export class PartiesService {
       }
       settlement.settlementAmount = newAmount.toFixed(2);
       if (dto.settlementDate) settlement.settlementDate = dto.settlementDate;
-      if (dto.reference !== undefined) settlement.reference = dto.reference || undefined;
+      if (dto.reference !== undefined)
+        settlement.reference = dto.reference || undefined;
       if (dto.notes !== undefined) settlement.notes = dto.notes || undefined;
       settlement.updatedBy = actorId;
       await manager.save(PartySettlement, settlement);
@@ -1074,10 +1190,12 @@ export class PartiesService {
     reason: string,
     actorId: string,
   ) {
-    const settlement = await this.dataSource.getRepository(PartySettlement).findOne({
-      where: { id: settlementId },
-      relations: ['payableParty', 'receivableParty', 'department'],
-    });
+    const settlement = await this.dataSource
+      .getRepository(PartySettlement)
+      .findOne({
+        where: { id: settlementId },
+        relations: ['payableParty', 'receivableParty', 'department'],
+      });
     if (!settlement) throw new NotFoundException('Settlement not found');
     if (settlement.status !== 'active') {
       throw new BadRequestException('Only active settlements can be deleted');

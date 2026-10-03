@@ -7,7 +7,7 @@ import {
 } from 'class-validator';
 
 export class CreateAdvanceDto {
-  @IsNumber()
+  @IsNumber({ maxDecimalPlaces: 2 })
   @IsPositive()
   amount: number;
 

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import {
   ConsolidatedPnLPage,
@@ -14,6 +14,8 @@ import {
 const hooks = vi.hoisted(() => ({
   consolidated: vi.fn(),
   partner: vi.fn(),
+  saveShares: vi.fn(),
+  postProfit: vi.fn(),
   outstanding: vi.fn(),
   stock: vi.fn(),
   expenses: vi.fn(),
@@ -31,6 +33,8 @@ vi.mock("@/features/expenses/expensesApi", () => ({
   }),
 }));
 vi.mock("../reportsApi", () => ({
+  usePostPartnerProfitMutation: () => [hooks.postProfit, { isLoading: false }],
+  useSavePartnerSharesMutation: () => [hooks.saveShares, { isLoading: false }],
   useGetConsolidatedProfitLossQuery: (args: unknown) =>
     hooks.consolidated(args),
   useGetPartnerProfitShareQuery: (args: unknown) => hooks.partner(args),
@@ -40,10 +44,67 @@ vi.mock("../reportsApi", () => ({
   useGetPayrollSummaryQuery: (args: unknown) => hooks.payroll(args),
 }));
 
+vi.mock("react-redux", () => ({
+  useSelector: () => ({ role: { name: "owner" } }),
+}));
+
 const show = (node: React.ReactNode) =>
   render(<MemoryRouter>{node}</MemoryRouter>);
 
 describe("report pages", () => {
+  it("posts profit to accounts only after confirming the displayed allocation", async () => {
+    hooks.postProfit.mockReturnValue({
+      unwrap: () => Promise.resolve({ data: { message: "Posted" } }),
+    });
+    show(<PartnerProfitSharePage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Post profit / loss to accounts" }),
+    );
+    expect(hooks.postProfit).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(hooks.postProfit).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Post profit / loss to accounts" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm posting" }));
+    await waitFor(() =>
+      expect(hooks.postProfit).toHaveBeenCalledWith({
+        departmentId: "supply",
+        startDate: undefined,
+        endDate: undefined,
+        expectedNetProfit: "41000",
+      }),
+    );
+  });
+  it("displays a posting error and retains confirmation for review", async () => {
+    hooks.postProfit.mockReturnValue({
+      unwrap: () =>
+        Promise.reject({ data: { message: "This period overlaps" } }),
+    });
+    show(<PartnerProfitSharePage />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Post profit / loss to accounts" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Confirm posting" }));
+    await waitFor(() => expect(hooks.postProfit).toHaveBeenCalled());
+    expect(
+      screen.getByRole("button", { name: "Confirm posting" }),
+    ).toBeInTheDocument();
+  });
+  it("saves equal partners without entering rounded percentages", () => {
+    hooks.saveShares.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+    show(<PartnerProfitSharePage />);
+    fireEvent.click(screen.getByLabelText("Equal partners"));
+    expect(
+      screen.queryByLabelText("Ali ownership (%)"),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save equal shares" }));
+    expect(hooks.saveShares).toHaveBeenCalledWith({
+      departmentId: "supply",
+      allocationMode: "equal",
+      shares: [{ userId: "a" }, { userId: "b" }],
+    });
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     hooks.consolidated.mockReturnValue({
@@ -59,7 +120,33 @@ describe("report pages", () => {
       isLoading: false,
     });
     hooks.partner.mockReturnValue({
-      data: { data: { netProfit: "41000", partnerShare: "13666.67" } },
+      data: {
+        data: {
+          netProfit: "41000",
+          allocatedProfit: "41000",
+          unallocatedProfit: "0.00",
+          departments: [
+            {
+              departmentId: "supply",
+              departmentName: "Supply",
+              netProfit: "41000",
+              configured: true,
+              unallocatedProfit: "0.00",
+              partners: [
+                { userId: "a", partnerName: "Ali", profitShare: "20500.00" },
+                { userId: "b", partnerName: "Sara", profitShare: "20500.00" },
+              ],
+            },
+            {
+              departmentId: "shop",
+              departmentName: "Shop",
+              netProfit: "0.00",
+              unallocatedProfit: "0.00",
+              partners: [],
+            },
+          ],
+        },
+      },
       isLoading: false,
     });
     hooks.outstanding.mockReturnValue({
@@ -165,9 +252,14 @@ describe("report pages", () => {
     });
   });
 
-  it("renders exactly three partner shares", () => {
+  it("renders actual department partners and flags departments without partners", () => {
     show(<PartnerProfitSharePage />);
-    expect(screen.getAllByText(/13,667/)).toHaveLength(3);
+    expect(screen.getByText("Supply")).toBeInTheDocument();
+    expect(screen.getByText("Ali")).toBeInTheDocument();
+    expect(screen.getByText("Sara")).toBeInTheDocument();
+    expect(screen.getAllByText(/20,500/)).toHaveLength(2);
+    expect(screen.getByText(/No partners assigned/)).toBeInTheDocument();
+    expect(screen.queryByText("Partner 1")).not.toBeInTheDocument();
   });
 
   it("renders outstanding balance", () => {

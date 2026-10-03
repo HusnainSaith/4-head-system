@@ -68,6 +68,8 @@ export interface SalaryRun {
   baseSalary: string;
   totalBonuses: string;
   totalAdvancesDeducted: string;
+  manualDeduction?: string;
+  deductionReason?: string;
   netPayable: string;
   paymentStatus: PaymentStatus;
   amountPaid: string;
@@ -80,6 +82,8 @@ export interface RunPayrollRequest {
   periodMonth: number;
   periodYear: number;
   recoverAdvances: boolean;
+  manualDeduction?: number;
+  deductionReason?: string;
 }
 export interface PaySalaryRunRequest extends PaymentAccountSelection {
   paidDate: string;
@@ -92,7 +96,7 @@ export interface SalaryWithdrawalAllocation {
   amount: string;
   salaryRun: SalaryRun;
 }
-export interface SalaryWithdrawal {
+export interface SalaryWithdrawal extends PaymentAccountSelection {
   id: string;
   amount: string;
   withdrawalDate: string;

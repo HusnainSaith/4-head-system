@@ -84,9 +84,40 @@ export const employeesApi = apiSlice.injectEndpoints({
         { type: "EmployeeAdvance", id: employeeId },
       ],
     }),
+    updateAdvance: builder.mutation<
+      ApiResponse<EmployeeAdvance>,
+      { employeeId: string; advanceId: string; body: CreateAdvanceRequest }
+    >({
+      query: ({ employeeId, advanceId, body }) => ({
+        url: "/employees/" + employeeId + "/advances/" + advanceId,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: (_r, _e, { employeeId }) => [
+        { type: "EmployeeAdvance", id: employeeId },
+        "Account",
+      ],
+    }),
+    deleteAdvance: builder.mutation<
+      ApiResponse<void>,
+      { employeeId: string; advanceId: string }
+    >({
+      query: ({ employeeId, advanceId }) => ({
+        url: "/employees/" + employeeId + "/advances/" + advanceId,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_r, _e, { employeeId }) => [
+        { type: "EmployeeAdvance", id: employeeId },
+        "Account",
+      ],
+    }),
     confirmAdvance: builder.mutation<
       ApiResponse<EmployeeAdvance>,
-      { employeeId: string; advanceId: string; paymentMethod: "cash" | "bank" } & PaymentAccountSelection
+      {
+        employeeId: string;
+        advanceId: string;
+        paymentMethod: "cash" | "bank";
+      } & PaymentAccountSelection
     >({
       query: ({ employeeId, advanceId, ...body }) => ({
         url: `/employees/${employeeId}/advances/${advanceId}/confirm`,
@@ -95,6 +126,7 @@ export const employeesApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (_r, _e, { employeeId }) => [
         { type: "EmployeeAdvance", id: employeeId },
+        "Account",
       ],
     }),
     listBonuses: builder.query<ApiResponse<EmployeeBonus[]>, string>({
@@ -112,6 +144,69 @@ export const employeesApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (_r, _e, { employeeId }) => [
         { type: "EmployeeBonus", id: employeeId },
+        "SalaryRun",
+        { type: "SalaryAccount", id: employeeId },
+        "SupplyReport",
+        "BrokerageReport",
+        "WastageReport",
+        "ShopReport",
+        "ConsolidatedReport",
+      ],
+    }),
+    updateBonus: builder.mutation<
+      ApiResponse<EmployeeBonus>,
+      { employeeId: string; bonusId: string; body: CreateBonusRequest }
+    >({
+      query: ({ employeeId, bonusId, body }) => ({
+        url: `/employees/${employeeId}/bonuses/${bonusId}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: (_r, _e, { employeeId }) => [
+        { type: "EmployeeBonus", id: employeeId },
+        { type: "SalaryAccount", id: employeeId },
+        "SalaryRun",
+        "Account",
+        "ConsolidatedReport",
+        "SupplyReport",
+        "BrokerageReport",
+        "WastageReport",
+        "ShopReport",
+      ],
+    }),
+    deleteBonus: builder.mutation<
+      ApiResponse<void>,
+      { employeeId: string; bonusId: string }
+    >({
+      query: ({ employeeId, bonusId }) => ({
+        url: `/employees/${employeeId}/bonuses/${bonusId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_r, _e, { employeeId }) => [
+        { type: "EmployeeBonus", id: employeeId },
+        { type: "SalaryAccount", id: employeeId },
+        "SalaryRun",
+        "Account",
+        "ConsolidatedReport",
+        "SupplyReport",
+        "BrokerageReport",
+        "WastageReport",
+        "ShopReport",
+      ],
+    }),
+    cancelPayroll: builder.mutation<
+      ApiResponse<void>,
+      { employeeId: string; runId: string }
+    >({
+      query: ({ employeeId, runId }) => ({
+        url: "/employees/" + employeeId + "/payroll/" + runId + "/cancel",
+        method: "POST",
+      }),
+      invalidatesTags: [
+        "SalaryAccount",
+        "SalaryRun",
+        "Account",
+        "ConsolidatedReport",
       ],
     }),
     runPayroll: builder.mutation<ApiResponse<SalaryRun>, RunPayrollRequest>({
@@ -155,6 +250,8 @@ export const employeesApi = apiSlice.injectEndpoints({
         body,
       }),
       invalidatesTags: (_r, _e, { id }) => [
+        "SalaryAccount",
+        "Account",
         { type: "SalaryRun", id },
         { type: "SalaryRun", id: "LIST" },
         { type: "ConsolidatedReport", id: "PROFIT_LOSS" },
@@ -172,6 +269,49 @@ export const employeesApi = apiSlice.injectEndpoints({
         { type: "SalaryAccount", id: employeeId },
       ],
     }),
+    updateSalaryWithdrawal: builder.mutation<
+      ApiResponse<SalaryWithdrawal>,
+      {
+        employeeId: string;
+        withdrawalId: string;
+        body: CreateSalaryWithdrawalRequest;
+      }
+    >({
+      query: ({ employeeId, withdrawalId, body }) => ({
+        url:
+          "/employees/" +
+          employeeId +
+          "/salary-account/withdrawals/" +
+          withdrawalId,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: (_r, _e, { employeeId }) => [
+        { type: "SalaryAccount", id: employeeId },
+        "SalaryRun",
+        "Account",
+        "ConsolidatedReport",
+      ],
+    }),
+    deleteSalaryWithdrawal: builder.mutation<
+      ApiResponse<void>,
+      { employeeId: string; withdrawalId: string }
+    >({
+      query: ({ employeeId, withdrawalId }) => ({
+        url:
+          "/employees/" +
+          employeeId +
+          "/salary-account/withdrawals/" +
+          withdrawalId,
+        method: "DELETE",
+      }),
+      invalidatesTags: (_r, _e, { employeeId }) => [
+        { type: "SalaryAccount", id: employeeId },
+        "SalaryRun",
+        "Account",
+        "ConsolidatedReport",
+      ],
+    }),
     withdrawSalary: builder.mutation<
       ApiResponse<SalaryWithdrawal>,
       { employeeId: string; body: CreateSalaryWithdrawalRequest }
@@ -183,7 +323,9 @@ export const employeesApi = apiSlice.injectEndpoints({
       }),
       invalidatesTags: (_r, _e, { employeeId }) => [
         { type: "SalaryAccount", id: employeeId },
-        { type: "SalaryRun", id: "LIST" },
+        "SalaryRun",
+        "Account",
+        "ConsolidatedReport",
       ],
     }),
   }),
@@ -198,12 +340,19 @@ export const {
   useListAdvancesQuery,
   useCreateAdvanceMutation,
   useConfirmAdvanceMutation,
+  useUpdateAdvanceMutation,
+  useDeleteAdvanceMutation,
   useListBonusesQuery,
   useCreateBonusMutation,
+  useUpdateBonusMutation,
+  useDeleteBonusMutation,
   useRunPayrollMutation,
+  useCancelPayrollMutation,
   useListSalaryRunsQuery,
   useGetSalaryRunQuery,
   useMarkSalaryRunPaidMutation,
   useGetSalaryAccountQuery,
   useWithdrawSalaryMutation,
+  useUpdateSalaryWithdrawalMutation,
+  useDeleteSalaryWithdrawalMutation,
 } = employeesApi;

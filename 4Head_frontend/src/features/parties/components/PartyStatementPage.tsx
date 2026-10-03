@@ -1,3 +1,4 @@
+import { TransactionNotes } from "@/components/common/TransactionNotes";
 import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
@@ -49,6 +50,7 @@ import {
   useGetPartyQuery,
   useGetPartyStatementQuery,
   useDeletePartyMutation,
+  useDeletePartyPaymentMutation,
   useRecordPartyPaymentMutation,
   useUpdatePartyPaymentMutation,
 } from "@/features/parties/partiesApi";
@@ -476,6 +478,7 @@ export function PartyStatementPage() {
   const [editingTransaction, setEditingTransaction] = useState<PartyStatementEntry | null>(null);
   const [partyDialogOpen, setPartyDialogOpen] = useState(false);
   const [deleteParty, deletePartyState] = useDeletePartyMutation();
+  const [deletePartyPayment] = useDeletePartyPaymentMutation();
 
   const partyQuery = useGetPartyQuery(id ?? "", { skip: !id });
 
@@ -511,16 +514,16 @@ export function PartyStatementPage() {
         cell: (entry) => entry.entryDate,
       },
       {
-        id: "description",
-        header: "Description",
+        id: "type",
+        header: "Type",
         cell: (entry) => (
-          <span>
-            <span className="capitalize">
-              {entry.sourceType.replaceAll("_", " ")}
-            </span>
-            {entry.description ? ` - ${entry.description}` : ""}
-          </span>
+          <span className="capitalize">{entry.sourceType.replaceAll("_", " ")}</span>
         ),
+      },
+      {
+        id: "description",
+        header: "Notes",
+        cell: (entry) => <TransactionNotes notes={entry.description} />,
       },
       {
         id: "quantityKg",
@@ -610,13 +613,19 @@ export function PartyStatementPage() {
               type="button"
               variant="destructive"
               size="sm"
-              onClick={() => {
+              onClick={async () => {
                 if (entry.sourceType === "sale") {
                   navigate(`/supply/sales?transactionId=${entry.sourceId}`);
                 } else if (entry.sourceType === "purchase") {
                   navigate(`/supply/purchases?transactionId=${entry.sourceId}`);
                 } else if (entry.sourceType === "payment") {
-                  toast.info("Payment reversal is not available yet");
+                  if (!window.confirm("Delete this payment and reverse its ledger entries?")) return;
+                  try {
+                    await deletePartyPayment({ id: id!, paymentId: entry.sourceId }).unwrap();
+                    toast.success("Payment reversed and deleted");
+                  } catch (error) {
+                    toast.error(getApiErrorMessage(error));
+                  }
                 } else {
                   toast.info("This transaction cannot be cancelled from the statement");
                 }
@@ -629,7 +638,7 @@ export function PartyStatementPage() {
         ),
       },
     ],
-    [isInvestorParty],
+    [deletePartyPayment, id, isInvestorParty],
   );
 
   // --- Guard: missing id ---

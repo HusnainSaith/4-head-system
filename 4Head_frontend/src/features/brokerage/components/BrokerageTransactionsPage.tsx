@@ -1,3 +1,4 @@
+import { TransactionNotes } from "@/components/common/TransactionNotes";
 import React, { useState } from "react";
 import { toast } from "sonner";
 import { Plus, Handshake } from "lucide-react";
@@ -131,6 +132,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
   };
 
   const columns: DataTableColumn<BrokeragePurchase | BrokerageSale>[] = [
+    { id: "notes", header: "Notes", cell: (row) => <TransactionNotes notes={row.description} /> },
     {
       id: "party",
       header: kind === "purchase" ? "Seller (Farm)" : "Buyer",
