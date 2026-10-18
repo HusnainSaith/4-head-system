@@ -113,6 +113,7 @@ export class SettleTransferDto extends PaymentAccountSelectionDto {
 }
 
 export class SupplyListQueryDto {
+  @IsOptional() @IsString() search?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) page = 1;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(100) limit = 20;
   @IsOptional() @IsDateString() from?: string;

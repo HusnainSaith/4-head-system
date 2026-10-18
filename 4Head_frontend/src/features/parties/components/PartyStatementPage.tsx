@@ -1,3 +1,22 @@
+import {
+  useUpdateSaleMutation as useUpdateWastageSaleMutation,
+  useUpdatePurchaseMutation as useUpdateWastagePurchaseMutation,
+  useDeleteSaleMutation as useDeleteWastageSaleMutation,
+  useDeletePurchaseMutation as useDeleteWastagePurchaseMutation,
+} from "@/features/wastage/wastageApi";
+import {
+  useUpdateShopPurchaseMutation,
+  useUpdateShopSaleMutation,
+  useDeleteShopSaleMutation,
+  useDeleteShopPurchaseMutation,
+} from "@/features/fresh-chicken-shop/shopApi";
+import { useListDepartmentsQuery } from "@/features/departments/departmentsApi";
+import {
+  useUpdateBrokeragePurchaseMutation,
+  useUpdateBrokerageSaleMutation,
+  useDeleteBrokeragePurchaseMutation,
+  useDeleteBrokerageSaleMutation,
+} from "@/features/brokerage/brokerageApi";
 import { TransactionNotes } from "@/components/common/TransactionNotes";
 import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -53,10 +72,14 @@ import {
   useDeletePartyPaymentMutation,
   useRecordPartyPaymentMutation,
   useUpdatePartyPaymentMutation,
+  useUpdateStatementAdjustmentMutation,
+  useDeleteStatementAdjustmentMutation,
 } from "@/features/parties/partiesApi";
 import {
   useUpdateSupplyPurchaseMutation,
   useUpdateSupplySaleMutation,
+  useDeleteSupplyPurchaseMutation,
+  useDeleteSupplySaleMutation,
 } from "@/features/supply/supplyApi";
 import { PartyFormDialog } from "@/features/parties/components/PartyFormDialog";
 import { PartyType, type PartyStatementEntry } from "@/features/parties/types";
@@ -138,11 +161,15 @@ function printStatement(startDate: string, endDate: string) {
 function BalanceBadge({ balance }: { balance: string }) {
   const value = Number(balance);
   if (value < 0)
-    return <Badge variant="success">Department receives {money.format(Math.abs(value))}</Badge>;
+    return (
+      <Badge variant="success">
+        Department receives {formatPartyBalance(value)}
+      </Badge>
+    );
   if (value > 0)
     return (
       <Badge variant="destructive">
-        Department pays {money.format(value)}
+        Department pays {formatPartyBalance(value)}
       </Badge>
     );
   return <Badge variant="secondary">Settled</Badge>;
@@ -187,7 +214,8 @@ function RecordPaymentDialog({
     resolver: zodResolver(paymentSchema),
     defaultValues: {
       amount: editingEntry?.amount ?? "",
-      paymentDate: editingEntry?.entryDate ?? new Date().toISOString().slice(0, 10),
+      paymentDate:
+        editingEntry?.entryDate ?? new Date().toISOString().slice(0, 10),
       paymentMethod: "cash",
       direction: editingEntry?.entryType === "credit" ? "received" : "paid",
       notes: editingEntry?.description ?? "",
@@ -202,7 +230,8 @@ function RecordPaymentDialog({
     if (open) {
       form.reset({
         amount: editingEntry?.amount ?? "",
-        paymentDate: editingEntry?.entryDate ?? new Date().toISOString().slice(0, 10),
+        paymentDate:
+          editingEntry?.entryDate ?? new Date().toISOString().slice(0, 10),
         paymentMethod: "cash",
         direction: editingEntry?.entryType === "credit" ? "received" : "paid",
         notes: editingEntry?.description ?? "",
@@ -214,15 +243,19 @@ function RecordPaymentDialog({
     form.clearErrors("root");
     try {
       const body = {
-          amount: Number(values.amount),
-          paymentDate: values.paymentDate,
-          paymentMethod: values.paymentMethod,
-          ...accountSelection,
-          direction: values.direction,
-          notes: values.notes || undefined,
-        };
+        amount: Number(values.amount),
+        paymentDate: values.paymentDate,
+        paymentMethod: values.paymentMethod,
+        ...accountSelection,
+        direction: values.direction,
+        notes: values.notes || undefined,
+      };
       if (editingEntry) {
-        await updatePayment({ id: partyId, paymentId: editingEntry.sourceId, body }).unwrap();
+        await updatePayment({
+          id: partyId,
+          paymentId: editingEntry.sourceId,
+          body,
+        }).unwrap();
         toast.success("Payment updated");
       } else {
         await recordPayment({ id: partyId, body }).unwrap();
@@ -247,7 +280,9 @@ function RecordPaymentDialog({
     >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-              <DialogTitle>{editingEntry ? "Edit payment" : "Record payment"}</DialogTitle>
+          <DialogTitle>
+            {editingEntry ? "Edit payment" : "Record payment"}
+          </DialogTitle>
           <DialogDescription>
             Record a cash or bank payment to or from this party.
           </DialogDescription>
@@ -350,7 +385,10 @@ function RecordPaymentDialog({
               >
                 Cancel
               </Button>
-              <Button type="submit" isLoading={recordState.isLoading || updateState.isLoading}>
+              <Button
+                type="submit"
+                isLoading={recordState.isLoading || updateState.isLoading}
+              >
                 {editingEntry ? "Update payment" : "Record payment"}
               </Button>
             </DialogFooter>
@@ -363,32 +401,50 @@ function RecordPaymentDialog({
 
 function TransactionEditDialog({
   entry,
+  departmentType,
   open,
   onOpenChange,
 }: {
   entry: PartyStatementEntry | null;
+  departmentType?: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
   const [date, setDate] = useState(entry?.entryDate ?? "");
   const [quantity, setQuantity] = useState(entry?.quantityKg ?? "");
   const [rate, setRate] = useState(entry?.ratePerKg ?? "");
-  const [amount, setAmount] = useState(entry?.amount ?? "");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">("cash");
+  const [amount, setAmount] = useState(
+    entry?.settlementAmount ?? entry?.paymentAmount ?? entry?.amount ?? "",
+  );
+
   const [direction, setDirection] = useState<"received" | "paid">(
     entry?.entryType === "credit" ? "received" : "paid",
   );
   const [notes, setNotes] = useState(entry?.description ?? "");
   const [updateSale, saleState] = useUpdateSupplySaleMutation();
   const [updatePurchase, purchaseState] = useUpdateSupplyPurchaseMutation();
+  const [updateBrokerageSale, brokerageSaleState] =
+    useUpdateBrokerageSaleMutation();
+  const [updateBrokeragePurchase, brokeragePurchaseState] =
+    useUpdateBrokeragePurchaseMutation();
+  const [updateWastageSale, wastageSaleState] = useUpdateWastageSaleMutation();
+  const [updateWastagePurchase, wastagePurchaseState] =
+    useUpdateWastagePurchaseMutation();
+  const [updateShopPurchase, shopPurchaseState] =
+    useUpdateShopPurchaseMutation();
+  const [updateShopSale, shopSaleState] = useUpdateShopSaleMutation();
   const [updatePayment, paymentState] = useUpdatePartyPaymentMutation();
+  const [updateAdjustment, adjustmentState] =
+    useUpdateStatementAdjustmentMutation();
 
   useEffect(() => {
     if (open) {
       setDate(entry?.entryDate ?? "");
       setQuantity(entry?.quantityKg ?? "");
       setRate(entry?.ratePerKg ?? "");
-      setAmount(entry?.amount ?? "");
+      setAmount(
+        entry?.settlementAmount ?? entry?.paymentAmount ?? entry?.amount ?? "",
+      );
       setDirection(entry?.entryType === "credit" ? "received" : "paid");
       setNotes(entry?.description ?? "");
     }
@@ -398,15 +454,91 @@ function TransactionEditDialog({
     if (!entry || !date) return;
     try {
       if (entry.sourceType === "sale") {
-        const body = { saleDate: date, ...(quantity !== entry.quantityKg ? { quantityKg: Number(quantity) } : {}), ...(rate !== entry.ratePerKg ? { ratePerKg: Number(rate) } : {}), ...(notes !== (entry.description ?? "") ? { notes } : {}) };
-        await updateSale({ id: entry.sourceId, body }).unwrap();
+        const body = {
+          saleDate: date,
+          ...(quantity && quantity !== entry.quantityKg
+            ? { quantityKg: Number(quantity) }
+            : {}),
+          ...(rate && rate !== entry.ratePerKg
+            ? { ratePerKg: Number(rate) }
+            : {}),
+          ...(notes !== (entry.description ?? "") ? { notes } : {}),
+        };
+        if (departmentType === "BROKERAGE") {
+          const { notes: description, ...fields } = body;
+          await updateBrokerageSale({
+            id: entry.sourceId,
+            body: {
+              ...fields,
+              ...(description !== undefined ? { description } : {}),
+            },
+          }).unwrap();
+        } else if (departmentType === "SUPPLY")
+          await updateSale({ id: entry.sourceId, body }).unwrap();
+        else if (departmentType === "WASTAGE")
+          await updateWastageSale({ id: entry.sourceId, body }).unwrap();
+        else if (departmentType === "FRESH_CHICKEN_SHOP")
+          await updateShopSale({ id: entry.sourceId, body }).unwrap();
+        else
+          throw new Error("Open this transaction in its department to edit it");
       } else if (entry.sourceType === "purchase") {
-        const body = { purchaseDate: date, ...(quantity !== entry.quantityKg ? { quantityKg: Number(quantity) } : {}), ...(rate !== entry.ratePerKg ? { ratePerKg: Number(rate) } : {}), ...(notes !== (entry.description ?? "") ? { notes } : {}) };
-        await updatePurchase({ id: entry.sourceId, body }).unwrap();
+        const body = {
+          purchaseDate: date,
+          ...(quantity && quantity !== entry.quantityKg
+            ? { quantityKg: Number(quantity) }
+            : {}),
+          ...(rate && rate !== entry.ratePerKg
+            ? { ratePerKg: Number(rate) }
+            : {}),
+          ...(notes !== (entry.description ?? "") ? { notes } : {}),
+        };
+        if (departmentType === "BROKERAGE") {
+          const { notes: description, ...fields } = body;
+          await updateBrokeragePurchase({
+            id: entry.sourceId,
+            body: {
+              ...fields,
+              ...(description !== undefined ? { description } : {}),
+            },
+          }).unwrap();
+        } else if (departmentType === "SUPPLY")
+          await updatePurchase({ id: entry.sourceId, body }).unwrap();
+        else if (departmentType === "WASTAGE")
+          await updateWastagePurchase({ id: entry.sourceId, body }).unwrap();
+        else if (departmentType === "FRESH_CHICKEN_SHOP")
+          await updateShopPurchase({
+            id: entry.sourceId,
+            body: {
+              purchaseDate: date,
+              ...(notes !== (entry.description ?? "") ? { notes } : {}),
+            },
+          }).unwrap();
+        else
+          throw new Error("Open this transaction in its department to edit it");
+      } else if (
+        entry.sourceType === "party_adjustment" ||
+        entry.sourceType === "opening_balance"
+      ) {
+        await updateAdjustment({
+          id: entry.partyId ?? "",
+          entryId: entry.id,
+          body: {
+            date,
+            amount: Number(amount),
+            entryType: direction === "received" ? "credit" : "debit",
+            notes,
+          },
+        }).unwrap();
       } else if (entry.sourceType === "payment") {
         const body = {
-          amount: Number(amount), direction, paymentDate: date, paymentMethod,
-          ...(notes ? { notes } : {}),
+          paymentDate: date,
+          ...(amount !== (entry.paymentAmount ?? entry.amount)
+            ? { amount: Number(amount) }
+            : {}),
+          ...(direction !== (entry.entryType === "credit" ? "received" : "paid")
+            ? { direction }
+            : {}),
+          ...(notes !== (entry.description ?? "") ? { notes } : {}),
         };
         await updatePayment({
           id: entry.partyId ?? "",
@@ -414,7 +546,7 @@ function TransactionEditDialog({
           body,
         }).unwrap();
       }
-      toast.success("Transaction date updated");
+      toast.success("Transaction updated");
       onOpenChange(false);
     } catch (error) {
       toast.error(getApiErrorMessage(error));
@@ -426,38 +558,118 @@ function TransactionEditDialog({
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Edit transaction</DialogTitle>
-          <DialogDescription>If you change only the date, the existing accounting entries are moved without a cancellation reversal.</DialogDescription>
+          <DialogDescription>
+            If you change only the date, the existing accounting entries are
+            moved without a cancellation reversal.
+          </DialogDescription>
         </DialogHeader>
         <Label htmlFor="transaction-date">Date</Label>
-        <Input id="transaction-date" type="date" value={date} onChange={(event) => setDate(event.target.value)} />
-        {entry?.sourceType === "payment" ? (
+        <Input
+          id="transaction-date"
+          type="date"
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
+        />
+        {entry?.sourceType === "payment" ||
+        entry?.sourceType === "party_adjustment" ||
+        entry?.sourceType === "opening_balance" ? (
           <>
             <Label htmlFor="transaction-amount">Amount</Label>
-            <Input id="transaction-amount" type="number" min="0.01" step="0.01" value={amount} onChange={(event) => setAmount(event.target.value)} />
-            <Label htmlFor="transaction-direction">Direction</Label>
-            <Select value={direction} onValueChange={(value) => setDirection(value as "received" | "paid")}>
-              <SelectTrigger id="transaction-direction"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="received">Received</SelectItem><SelectItem value="paid">Paid</SelectItem></SelectContent>
-            </Select>
-            <Label htmlFor="transaction-payment-method">Payment method</Label>
-            <Select value={paymentMethod} onValueChange={(value) => setPaymentMethod(value as "cash" | "bank")}>
-              <SelectTrigger id="transaction-payment-method"><SelectValue /></SelectTrigger>
-              <SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="bank">Bank</SelectItem></SelectContent>
-            </Select>
+            <Input
+              id="transaction-amount"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={amount}
+              onChange={(event) => setAmount(event.target.value)}
+            />
+            {!entry?.settlementAmount && (
+              <>
+                <Label htmlFor="transaction-direction">Direction</Label>
+                <Select
+                  value={direction}
+                  onValueChange={(value) =>
+                    setDirection(value as "received" | "paid")
+                  }
+                >
+                  <SelectTrigger id="transaction-direction">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="received">
+                      {entry?.sourceType === "party_adjustment" ||
+                      entry?.sourceType === "opening_balance"
+                        ? "Increase balance (credit)"
+                        : "Received"}
+                    </SelectItem>
+                    <SelectItem value="paid">
+                      {entry?.sourceType === "party_adjustment" ||
+                      entry?.sourceType === "opening_balance"
+                        ? "Decrease balance (debit)"
+                        : "Paid"}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </>
+            )}
           </>
         ) : (
           <>
             <Label htmlFor="transaction-quantity">Quantity (kg)</Label>
-            <Input id="transaction-quantity" type="number" min="0.001" step="0.001" value={quantity} onChange={(event) => setQuantity(event.target.value)} />
+            <Input
+              disabled={
+                departmentType === "FRESH_CHICKEN_SHOP" &&
+                entry?.sourceType === "purchase"
+              }
+              id="transaction-quantity"
+              type="number"
+              min="0.001"
+              step="0.001"
+              value={quantity}
+              onChange={(event) => setQuantity(event.target.value)}
+            />
             <Label htmlFor="transaction-rate">Rate/kg</Label>
-            <Input id="transaction-rate" type="number" min="0.01" step="0.01" value={rate} onChange={(event) => setRate(event.target.value)} />
+            <Input
+              disabled={
+                departmentType === "FRESH_CHICKEN_SHOP" &&
+                entry?.sourceType === "purchase"
+              }
+              id="transaction-rate"
+              type="number"
+              min="0.01"
+              step="0.01"
+              value={rate}
+              onChange={(event) => setRate(event.target.value)}
+            />
           </>
         )}
         <Label htmlFor="transaction-notes">Notes</Label>
-        <Input id="transaction-notes" value={notes} onChange={(event) => setNotes(event.target.value)} />
+        <Input
+          id="transaction-notes"
+          value={notes}
+          onChange={(event) => setNotes(event.target.value)}
+        />
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={() => void save()} isLoading={saleState.isLoading || purchaseState.isLoading || paymentState.isLoading}>Save changes</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            onClick={() => void save()}
+            isLoading={
+              saleState.isLoading ||
+              purchaseState.isLoading ||
+              paymentState.isLoading ||
+              brokerageSaleState.isLoading ||
+              brokeragePurchaseState.isLoading ||
+              adjustmentState.isLoading ||
+              wastageSaleState.isLoading ||
+              wastagePurchaseState.isLoading ||
+              shopSaleState.isLoading ||
+              shopPurchaseState.isLoading
+            }
+          >
+            Save changes
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -470,15 +682,31 @@ function TransactionEditDialog({
 
 export function PartyStatementPage() {
   const navigate = useNavigate();
+  const departmentsQuery = useListDepartmentsQuery();
+  const departmentTypeFor = (departmentId: string) =>
+    departmentsQuery.data?.data.find(
+      (department) => department.id === departmentId,
+    )?.type;
+  const [deleteBrokerageSale] = useDeleteBrokerageSaleMutation();
+  const [deleteBrokeragePurchase] = useDeleteBrokeragePurchaseMutation();
+  const [deleteWastageSale] = useDeleteWastageSaleMutation();
+  const [deleteWastagePurchase] = useDeleteWastagePurchaseMutation();
+  const [deleteShopSale] = useDeleteShopSaleMutation();
+  const [deleteShopPurchase] = useDeleteShopPurchaseMutation();
+  const [deleteSupplySale] = useDeleteSupplySaleMutation();
+  const [deleteSupplyPurchase] = useDeleteSupplyPurchaseMutation();
   const { id } = useParams<{ id: string }>();
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
-  const [editingPayment, setEditingPayment] = useState<PartyStatementEntry | null>(null);
-  const [editingTransaction, setEditingTransaction] = useState<PartyStatementEntry | null>(null);
+  const [editingPayment, setEditingPayment] =
+    useState<PartyStatementEntry | null>(null);
+  const [editingTransaction, setEditingTransaction] =
+    useState<PartyStatementEntry | null>(null);
   const [partyDialogOpen, setPartyDialogOpen] = useState(false);
   const [deleteParty, deletePartyState] = useDeletePartyMutation();
   const [deletePartyPayment] = useDeletePartyPaymentMutation();
+  const [deleteAdjustment] = useDeleteStatementAdjustmentMutation();
 
   const partyQuery = useGetPartyQuery(id ?? "", { skip: !id });
 
@@ -493,8 +721,8 @@ export function PartyStatementPage() {
   const filteredStatementQuery = useGetPartyStatementQuery(
     {
       id: id ?? "",
-      startDate: startDate || undefined,
-      endDate: endDate || undefined,
+      ...(startDate ? { startDate } : {}),
+      ...(endDate ? { endDate } : {}),
     },
     { skip: !id },
   );
@@ -517,7 +745,9 @@ export function PartyStatementPage() {
         id: "type",
         header: "Type",
         cell: (entry) => (
-          <span className="capitalize">{entry.sourceType.replaceAll("_", " ")}</span>
+          <span className="capitalize">
+            {entry.sourceType.replaceAll("_", " ")}
+          </span>
         ),
       },
       {
@@ -528,8 +758,7 @@ export function PartyStatementPage() {
       {
         id: "quantityKg",
         header: "Weight",
-        cell: (entry) =>
-          entry.quantityKg ? `${entry.quantityKg} kg` : "—",
+        cell: (entry) => (entry.quantityKg ? `${entry.quantityKg} kg` : "—"),
       },
       {
         id: "ratePerKg",
@@ -566,20 +795,20 @@ export function PartyStatementPage() {
             if (val > 0)
               return (
                 <span className="text-destructive">
-                  {money.format(val)} Payable
+                  {formatPartyBalance(val)} Payable
                 </span>
               );
             if (val < 0)
               return (
                 <span className="text-emerald-700">
-                  {money.format(Math.abs(val))} Receivable
+                  {formatPartyBalance(val)} Receivable
                 </span>
               );
             return <span>Settled</span>;
           }
           return (
             <span className={val > 0 ? "text-destructive" : undefined}>
-              {money.format(val)}
+              {formatPartyBalance(val)}
             </span>
           );
         },
@@ -588,57 +817,167 @@ export function PartyStatementPage() {
         id: "actions",
         header: "Actions",
         align: "right",
-        cell: (entry) => (
-          <div className="flex justify-end gap-2 print:hidden">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (entry.sourceType === "sale") {
-                  setEditingTransaction(entry);
-                } else if (entry.sourceType === "purchase") {
-                  setEditingTransaction(entry);
-                } else if (entry.sourceType === "payment") {
-                  setEditingTransaction(entry);
-                } else {
-                  toast.info("This transaction cannot be edited from the statement");
-                }
-              }}
-            >
-              <Pencil className="h-3.5 w-3.5" aria-hidden />
-              Edit
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              size="sm"
-              onClick={async () => {
-                if (entry.sourceType === "sale") {
-                  navigate(`/supply/sales?transactionId=${entry.sourceId}`);
-                } else if (entry.sourceType === "purchase") {
-                  navigate(`/supply/purchases?transactionId=${entry.sourceId}`);
-                } else if (entry.sourceType === "payment") {
-                  if (!window.confirm("Delete this payment and reverse its ledger entries?")) return;
-                  try {
-                    await deletePartyPayment({ id: id!, paymentId: entry.sourceId }).unwrap();
-                    toast.success("Payment reversed and deleted");
-                  } catch (error) {
-                    toast.error(getApiErrorMessage(error));
+        cell: (entry) =>
+          [
+            "sale",
+            "purchase",
+            "payment",
+            "party_adjustment",
+            "opening_balance",
+          ].includes(entry.sourceType) &&
+          (!entry.settlementStatus || entry.settlementStatus === "active") ? (
+            <div className="flex justify-end gap-2 print:hidden">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  if (entry.sourceType === "sale") {
+                    setEditingTransaction(entry);
+                  } else if (entry.sourceType === "purchase") {
+                    setEditingTransaction(entry);
+                  } else if (
+                    entry.sourceType === "party_adjustment" ||
+                    entry.sourceType === "opening_balance"
+                  ) {
+                    setEditingTransaction(entry);
+                  } else if (entry.sourceType === "payment") {
+                    setEditingTransaction(entry);
+                  } else {
+                    toast.info(
+                      "This transaction cannot be edited from the statement",
+                    );
                   }
-                } else {
-                  toast.info("This transaction cannot be cancelled from the statement");
-                }
-              }}
-            >
-              <Trash2 className="h-3.5 w-3.5" aria-hidden />
-              Delete
-            </Button>
-          </div>
-        ),
+                }}
+              >
+                <Pencil className="h-3.5 w-3.5" aria-hidden />
+                Edit
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={async () => {
+                  if (entry.sourceType === "sale") {
+                    if (
+                      !window.confirm(
+                        "Cancel this sale and reverse its stock and ledger entries?",
+                      )
+                    )
+                      return;
+                    try {
+                      const type = departmentTypeFor(entry.departmentId);
+                      if (type === "BROKERAGE")
+                        await deleteBrokerageSale(entry.sourceId).unwrap();
+                      else if (type === "SUPPLY")
+                        await deleteSupplySale(entry.sourceId).unwrap();
+                      else if (type === "WASTAGE")
+                        await deleteWastageSale(entry.sourceId).unwrap();
+                      else if (type === "FRESH_CHICKEN_SHOP")
+                        await deleteShopSale(entry.sourceId).unwrap();
+                      else
+                        throw new Error(
+                          "Open this transaction in its department to cancel it",
+                        );
+                      toast.success("Sale cancelled");
+                    } catch (error) {
+                      toast.error(getApiErrorMessage(error));
+                    }
+                  } else if (entry.sourceType === "purchase") {
+                    if (
+                      !window.confirm(
+                        "Cancel this purchase and reverse its stock and ledger entries?",
+                      )
+                    )
+                      return;
+                    try {
+                      const type = departmentTypeFor(entry.departmentId);
+                      if (type === "BROKERAGE")
+                        await deleteBrokeragePurchase(entry.sourceId).unwrap();
+                      else if (type === "SUPPLY")
+                        await deleteSupplyPurchase(entry.sourceId).unwrap();
+                      else if (type === "WASTAGE")
+                        await deleteWastagePurchase(entry.sourceId).unwrap();
+                      else if (type === "FRESH_CHICKEN_SHOP")
+                        await deleteShopPurchase(entry.sourceId).unwrap();
+                      else
+                        throw new Error(
+                          "Open this transaction in its department to cancel it",
+                        );
+                      toast.success("Purchase cancelled");
+                    } catch (error) {
+                      toast.error(getApiErrorMessage(error));
+                    }
+                  } else if (entry.sourceType === "payment") {
+                    if (
+                      !window.confirm(
+                        "Delete this payment and reverse its ledger entries?",
+                      )
+                    )
+                      return;
+                    try {
+                      await deletePartyPayment({
+                        id: id!,
+                        paymentId: entry.sourceId,
+                      }).unwrap();
+                      toast.success("Payment reversed and deleted");
+                    } catch (error) {
+                      toast.error(getApiErrorMessage(error));
+                    }
+                  } else if (
+                    entry.sourceType === "party_adjustment" ||
+                    entry.sourceType === "opening_balance"
+                  ) {
+                    if (
+                      !window.confirm(
+                        "Delete this adjustment or reverse its settlement and restore the affected balances?",
+                      )
+                    )
+                      return;
+                    try {
+                      await deleteAdjustment({
+                        id: id!,
+                        entryId: entry.id,
+                      }).unwrap();
+                      toast.success("Adjustment removed");
+                    } catch (error) {
+                      toast.error(getApiErrorMessage(error));
+                    }
+                  } else {
+                    toast.info(
+                      "This transaction cannot be cancelled from the statement",
+                    );
+                  }
+                }}
+              >
+                <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                Delete
+              </Button>
+            </div>
+          ) : (
+            <span className="text-muted-foreground">
+              {entry.settlementStatus === "reversed"
+                ? "Reversed"
+                : "System entry"}
+            </span>
+          ),
       },
     ],
-    [deletePartyPayment, id, isInvestorParty],
+    [
+      deletePartyPayment,
+      deleteAdjustment,
+      id,
+      isInvestorParty,
+      departmentsQuery.data,
+      deleteBrokerageSale,
+      deleteBrokeragePurchase,
+      deleteWastageSale,
+      deleteWastagePurchase,
+      deleteShopSale,
+      deleteShopPurchase,
+      deleteSupplySale,
+      deleteSupplyPurchase,
+    ],
   );
 
   // --- Guard: missing id ---
@@ -698,7 +1037,9 @@ export function PartyStatementPage() {
     ...(partyData.linkedDepartment ? [partyData.linkedDepartment] : []),
   ].filter(
     (department, index, options) =>
-      options.findIndex(({ id: departmentId }) => departmentId === department.id) === index,
+      options.findIndex(
+        ({ id: departmentId }) => departmentId === department.id,
+      ) === index,
   );
   const hasStatementPeriod = Boolean(startDate && endDate);
   const totalDebit = entries.reduce(
@@ -838,14 +1179,22 @@ export function PartyStatementPage() {
           entries.length ? (
             <>
               <tr className="statement-total-row">
-                <td colSpan={4} className="text-right">Total</td>
+                <td colSpan={4} className="text-right">
+                  Total
+                </td>
                 <td className="text-right">{money.format(totalDebit)}</td>
                 <td className="text-right">{money.format(totalCredit)}</td>
-                <td className="text-right">{money.format(Number(periodClosingBalance))}</td>
+                <td className="text-right">
+                  {formatPartyBalance(periodClosingBalance)}
+                </td>
               </tr>
               <tr className="statement-closing-row">
-                <td colSpan={7} className="text-right">Closing Balance</td>
-                <td className="text-right">{money.format(Number(periodClosingBalance))}</td>
+                <td colSpan={7} className="text-right">
+                  Closing Balance
+                </td>
+                <td className="text-right">
+                  {formatPartyBalance(periodClosingBalance)}
+                </td>
               </tr>
             </>
           ) : null
@@ -874,6 +1223,11 @@ export function PartyStatementPage() {
         }}
       />
       <TransactionEditDialog
+        departmentType={
+          editingTransaction
+            ? departmentTypeFor(editingTransaction.departmentId)
+            : undefined
+        }
         entry={editingTransaction}
         open={Boolean(editingTransaction)}
         onOpenChange={(open) => {
@@ -884,10 +1238,11 @@ export function PartyStatementPage() {
         <PartyFormDialog
           open
           onOpenChange={setPartyDialogOpen}
-          party={partyData}
+          party={{ ...partyData, currentBalance: closingBalance }}
           departmentOptions={departmentOptions}
         />
       ) : null}
     </PageContainer>
   );
 }
+import { formatPartyBalance } from "../party-balance";

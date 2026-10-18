@@ -45,7 +45,7 @@ export const authApi = apiSlice.injectEndpoints({
       },
     }),
     refresh: builder.mutation<RefreshResponse, RefreshRequest>({
-      query: (body) => ({ url: "/auth/refresh", method: "POST", body }),
+      query: (body) => ({ url: "/auth/refresh", method: "POST", body, timeout: 10_000 }),
     }),
     logout: builder.mutation<LogoutResponse, LogoutRequest>({
       query: (body) => ({ url: "/auth/logout", method: "POST", body }),

@@ -1,10 +1,15 @@
+import { PagedTransactionTable as DataTable } from "@/components/common/PagedTransactionTable";
+import {
+  TransactionSearch,
+  matchesTransactionSearch,
+} from "@/components/common/TransactionSearch";
 import { notesColumn } from "@/components/common/TransactionNotes";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useSelector } from "react-redux";
 import { toast } from "sonner";
 import { z } from "zod";
-import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
+import { type DataTableColumn } from "@/components/common/DataTable";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -66,7 +71,7 @@ const shopSaleSchema = z.object({
 });
 
 const columns: DataTableColumn<ShopSale>[] = [
-    notesColumn(),
+  notesColumn(),
   {
     id: "customer",
     header: "Customer",
@@ -121,7 +126,7 @@ const columns: DataTableColumn<ShopSale>[] = [
   {
     id: "outstanding",
     header: "Initial receivable",
-    cell: (r) => money.format(Number(r.outstandingAmount)),
+    cell: (r) => formatPartyBalance(transactionPartyBalance('sale', r.outstandingAmount)),
     align: "right",
   },
   {
@@ -137,6 +142,7 @@ const columns: DataTableColumn<ShopSale>[] = [
 ];
 
 export function ShopSalesPage() {
+  const [search, setSearch] = useState("");
   const query = useListShopSalesQuery();
   const stock = useGetShopStockQuery();
   const role = useSelector(selectUserRole);
@@ -210,9 +216,14 @@ export function ShopSalesPage() {
       <DepartmentBalancesPanel
         departmentCode={DepartmentCode.FRESH_CHICKEN_SHOP}
       />
+      <TransactionSearch value={search} onChange={setSearch} />
       <DataTable
+        dateField="saleDate"
+        filterKey={search}
         columns={[...columns, ...actionColumns]}
-        data={query.data?.data ?? []}
+        data={(query.data?.data ?? []).filter((record) =>
+          matchesTransactionSearch(record, search),
+        )}
         getRowId={(r) => r.id}
         emptyContent={<EmptyState title="No sales recorded" />}
       />
@@ -276,11 +287,13 @@ function SaleDialog({
   onClose: () => void;
   onSubmit: (body: CreateSaleRequest) => Promise<void>;
 }) {
+  const [partySearch, setPartySearch] = useState("");
   const [customerId, setCustomerId] = useState("");
   const [quantity, setQuantity] = useState("");
   const [rate, setRate] = useState("");
   const [method, setMethod] = useState<"cash" | "bank" | "credit">("cash");
-  const [accountSelection, setAccountSelection] = useState<PaymentAccountSelection>({});
+  const [accountSelection, setAccountSelection] =
+    useState<PaymentAccountSelection>({});
   const [amountReceived, setAmountReceived] = useState("");
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
@@ -292,10 +305,17 @@ function SaleDialog({
   const [createParty, partyState] = useCreatePartyMutation();
 
   const partiesQuery = useListPartiesQuery(
-    { type: PartyType.CUSTOMER, limit: 100 },
-    { skip: !open },
+    {
+      departmentId,
+      type: PartyType.CUSTOMER,
+      search: partySearch.trim() || undefined,
+      limit: 100,
+    },
+    { skip: !open || !departmentId },
   );
-  const customers = partiesQuery.data?.data?.items ?? [];
+  const customers = departmentId
+    ? (partiesQuery.currentData?.data?.items ?? [])
+    : [];
 
   const handleClose = () => {
     setCustomerId("");
@@ -348,9 +368,7 @@ function SaleDialog({
       ratePerKg: r,
     });
     if (!parsed.success) {
-      setFormError(
-        parsed.error.issues[0]?.message ?? "Check the sale weight.",
-      );
+      setFormError(parsed.error.issues[0]?.message ?? "Check the sale weight.");
       return;
     }
     const total = quantityKg * r;
@@ -446,29 +464,41 @@ function SaleDialog({
                 </Button>
               </div>
             ) : (
-              <Select
-                value={customerId || "none"}
-                onValueChange={(v) => setCustomerId(v === "none" ? "" : v)}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select customer (optional)" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">— Walk-in / None —</SelectItem>
-                  {customers.map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <>
+                <Input
+                  aria-label="Search parties"
+                  placeholder="Search parties…"
+                  value={partySearch}
+                  onChange={(e) => setPartySearch(e.target.value)}
+                />
+                <Select
+                  value={customerId || "none"}
+                  onValueChange={(v) => setCustomerId(v === "none" ? "" : v)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select customer (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— Walk-in / None —</SelectItem>
+                    {customers
+                      .filter((p) =>
+                        p.name
+                          .toLowerCase()
+                          .includes(partySearch.toLowerCase().trim()),
+                      )
+                      .map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </>
             )}
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="sale-live-weight">
-              Dressed weight sold (kg) *
-            </Label>
+            <Label htmlFor="sale-live-weight">Dressed weight sold (kg) *</Label>
             <Input
               id="sale-live-weight"
               type="number"
@@ -508,7 +538,10 @@ function SaleDialog({
             <Label>Payment method</Label>
             <Select
               value={method}
-              onValueChange={(v) => { setMethod(v as typeof method); setAccountSelection({}); }}
+              onValueChange={(v) => {
+                setMethod(v as typeof method);
+                setAccountSelection({});
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -520,7 +553,12 @@ function SaleDialog({
               </SelectContent>
             </Select>
           </div>
-          <PaymentAccountFields paymentMethod={method} value={accountSelection} onChange={setAccountSelection} departmentId={departmentId} />
+          <PaymentAccountFields
+            paymentMethod={method}
+            value={accountSelection}
+            onChange={setAccountSelection}
+            departmentId={departmentId}
+          />
 
           <div className="space-y-1.5">
             <Label htmlFor="sale-amount-received">Amount received</Label>
@@ -648,3 +686,4 @@ function ProfitPreview({
     </div>
   );
 }
+import { formatPartyBalance, transactionPartyBalance } from '@/features/parties/party-balance';

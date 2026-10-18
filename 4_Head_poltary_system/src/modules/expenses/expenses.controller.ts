@@ -8,6 +8,8 @@ import {
   Param,
   Patch,
   Req,
+  Delete,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -16,6 +18,7 @@ import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { CreateExpenseCategoryDto } from './dto/create-expense-category.dto';
+import { UpdateExpenseCategoryDto } from './dto/update-expense-category.dto';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RoleEnum } from '../../common/enums/role.enum';
@@ -50,7 +53,7 @@ export class ExpensesController {
     return this.svc.findAll(departmentId);
   }
 
-  @Get('categories/list')
+  @Get(['categories/list', 'categories'])
   categories() {
     return this.svc.getCategories();
   }
@@ -63,8 +66,22 @@ export class ExpensesController {
 
   @Patch('categories/:id')
   @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
-  updateCategory(@Param('id') id: string, @Body() dto: any) {
+  updateCategory(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: UpdateExpenseCategoryDto,
+  ) {
     return this.svc.updateCategory(id, dto);
+  }
+
+  @Get('categories/:id')
+  category(@Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.getCategory(id);
+  }
+
+  @Delete('categories/:id')
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  deleteCategory(@Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.deleteCategory(id);
   }
 
   @Get(':id')
@@ -75,9 +92,14 @@ export class ExpensesController {
 
   @Patch(':id')
   @ApiOperation({ summary: 'Update a manual expense' })
-  async update(@Param('id') id: string, @Body() dto: UpdateExpenseDto, @Req() req: Request) {
+  async update(
+    @Param('id') id: string,
+    @Body() dto: UpdateExpenseDto,
+    @Req() req: Request,
+  ) {
     const user = (req as any).user;
-    if (user.role?.name === RoleEnum.DEPARTMENT_STAFF) dto.departmentId = user.departmentId;
+    if (user.role?.name === RoleEnum.DEPARTMENT_STAFF)
+      dto.departmentId = user.departmentId;
     return this.svc.update(id, dto, user.id);
   }
 }

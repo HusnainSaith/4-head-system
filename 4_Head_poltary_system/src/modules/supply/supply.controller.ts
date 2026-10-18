@@ -18,10 +18,7 @@ import { SupplyService } from './supply.service';
 import {
   CreateSupplyPurchaseDto,
   CreateSupplySaleDto,
-  CreateInternalTransferDto,
-  SettleTransferDto,
   SupplyListQueryDto,
-  TransferListQueryDto,
 } from './dto/supply.dto';
 import { StockWriteoffDto } from '../inventory/dto/stock-writeoff.dto';
 
@@ -100,48 +97,17 @@ export class SupplyController {
     return this.supplyService.softDeleteSale(id, request.user.id);
   }
 
-  @Post('internal-transfers')
-  createTransfer(
-    @Body() dto: CreateInternalTransferDto,
-    @Req() request: Request & { user: { id: string } },
-  ) {
-    return this.supplyService.createInternalTransfer(dto, request.user.id);
-  }
-
-  @Get('internal-transfers')
-  findAllTransfers(@Query() query: TransferListQueryDto) {
-    return this.supplyService.findAllTransfers(query);
-  }
-
-  @Get('internal-transfers/:id')
-  findOneTransfer(@Param('id') id: string) {
-    return this.supplyService.findTransferById(id);
-  }
-
-  @Patch('internal-transfers/:id')
-  updateTransfer(
-    @Param('id') id: string,
-    @Body() dto: Partial<CreateInternalTransferDto>,
-  ) {
-    return this.supplyService.updateTransfer(id, dto);
-  }
-
-  @Post('internal-transfers/:id/settle')
-  settleTransfer(
-    @Param('id') id: string,
-    @Body() dto: SettleTransferDto,
-    @Req() request: Request & { user: { id: string } },
-  ) {
-    return this.supplyService.settleTransfer(id, dto, request.user.id);
-  }
-
   @Get('stock')
   getStock() {
     return this.supplyService.getStock();
   }
 
   @Get('stock/as-of')
-  @ApiQuery({ name: 'date', required: true, description: 'ISO date e.g. 2021-09-21' })
+  @ApiQuery({
+    name: 'date',
+    required: true,
+    description: 'ISO date e.g. 2021-09-21',
+  })
   getStockAsOf(@Query('date') date: string) {
     return this.supplyService.getStockAsOf(date);
   }
@@ -155,18 +121,29 @@ export class SupplyController {
   }
 
   @Get('stock/writeoffs')
-  listWriteoffs() { return this.supplyService.listStockWriteoffs(); }
+  listWriteoffs() {
+    return this.supplyService.listStockWriteoffs();
+  }
 
   @Get('stock/writeoffs/:id')
-  getWriteoff(@Param('id') id: string) { return this.supplyService.getStockWriteoff(id); }
+  getWriteoff(@Param('id') id: string) {
+    return this.supplyService.getStockWriteoff(id);
+  }
 
   @Patch('stock/writeoffs/:id')
-  updateWriteoff(@Param('id') id: string, @Body() dto: Partial<StockWriteoffDto>, @Req() request: Request & { user: { id: string } }) {
+  updateWriteoff(
+    @Param('id') id: string,
+    @Body() dto: Partial<StockWriteoffDto>,
+    @Req() request: Request & { user: { id: string } },
+  ) {
     return this.supplyService.updateStockWriteoff(id, dto, request.user.id);
   }
 
   @Delete('stock/writeoffs/:id')
-  deleteWriteoff(@Param('id') id: string, @Req() request: Request & { user: { id: string } }) {
+  deleteWriteoff(
+    @Param('id') id: string,
+    @Req() request: Request & { user: { id: string } },
+  ) {
     return this.supplyService.deleteStockWriteoff(id, request.user.id);
   }
 

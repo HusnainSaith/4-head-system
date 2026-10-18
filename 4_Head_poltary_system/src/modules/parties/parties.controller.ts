@@ -29,6 +29,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { RoleEnum } from '../../common/enums/role.enum';
 import { ListPartyPaymentsDto } from './dto/list-party-payments.dto';
+import { UpdateStatementAdjustmentDto } from './dto/update-statement-adjustment.dto';
 
 @ApiTags('Parties')
 @Controller('parties')
@@ -245,5 +246,20 @@ export class PartiesController extends BaseController {
     return this.handleAsyncOperation(
       this.partiesService.adjustBalance(id, dto, user.id),
     );
+  }
+
+  @Patch(':id/statement-adjustments/:entryId')
+  @UseGuards(RolesGuard)
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  updateStatementAdjustment(@Param('id') id: string, @Param('entryId') entryId: string,
+    @Body() dto: UpdateStatementAdjustmentDto, @Req() req: Request) {
+    return this.handleAsyncOperation(this.partiesService.updateStatementAdjustment(id, entryId, dto, (req as any).user.id));
+  }
+
+  @Delete(':id/statement-adjustments/:entryId')
+  @UseGuards(RolesGuard)
+  @Roles(RoleEnum.OWNER, RoleEnum.ACCOUNTANT)
+  deleteStatementAdjustment(@Param('id') id: string, @Param('entryId') entryId: string, @Req() req: Request) {
+    return this.handleAsyncOperation(this.partiesService.deleteStatementAdjustment(id, entryId, (req as any).user.id));
   }
 }

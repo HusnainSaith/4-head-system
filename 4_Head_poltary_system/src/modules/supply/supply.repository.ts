@@ -170,6 +170,11 @@ export class SupplyRepository {
     dateColumn: string,
     filters: SupplyListQueryDto,
   ) {
+    if (filters.search?.trim())
+      query.andWhere(
+        `(party.name ILIKE :search OR vehicle.registrationNumber ILIKE :search OR ${alias}.notes ILIKE :search OR CAST(${alias}.${dateColumn} AS TEXT) ILIKE :search)`,
+        { search: `%${filters.search.trim()}%` },
+      );
     if (filters.from)
       query.andWhere(`${alias}.${dateColumn} >= :from`, { from: filters.from });
     if (filters.to)

@@ -1,6 +1,11 @@
 import { apiSlice } from "@/store/apiSlice";
 import type { ApiResponse } from "@/types/api";
-import type { InternalTransfer } from "@/features/supply/types";
+import type {
+  SupplyPurchase,
+  CreatePurchaseRequest,
+  ListQuery,
+  PaginatedResponse,
+} from "@/features/supply/types";
 import type {
   CreateSaleRequest,
   ProfitLossResponse,
@@ -22,6 +27,8 @@ const clean = (p: Record<string, unknown>) =>
   );
 
 const saleRefresh = [
+  "Party" as const,
+  "PartyStatement" as const,
   { type: "ShopSale" as const, id: "LIST" },
   { type: "FreshChickenStock" as const, id: "CURRENT" },
   { type: "ShopReport" as const, id: "PROFIT_LOSS" },
@@ -43,16 +50,49 @@ const writeoffRefresh = [
 
 export const shopApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
-    // Incoming transfers are owned/invalidated by Supply (Task S5/S7).
-    // This endpoint just reads the same InternalTransfer data filtered to this dept.
-    getShopIncomingTransfers: builder.query<
-      ApiResponse<InternalTransfer[]>,
-      void
+    listShopPurchases: builder.query<
+      PaginatedResponse<SupplyPurchase>,
+      ListQuery
     >({
-      query: () => "/shop/incoming-transfers",
-      providesTags: [{ type: "InternalTransfer", id: "LIST" }],
+      query: (params) => ({
+        url: "/shop/purchases",
+        params: clean(params as Record<string, unknown>),
+      }),
+      providesTags: [{ type: "FreshChickenStock", id: "PURCHASES" }],
     }),
-
+    createShopPurchase: builder.mutation<
+      ApiResponse<SupplyPurchase>,
+      CreatePurchaseRequest
+    >({
+      query: (body) => ({ url: "/shop/purchases", method: "POST", body }),
+      invalidatesTags: [
+        ...saleRefresh,
+        { type: "FreshChickenStock", id: "PURCHASES" },
+        "Account",
+      ],
+    }),
+    updateShopPurchase: builder.mutation<
+      ApiResponse<SupplyPurchase>,
+      { id: string; body: { purchaseDate?: string; notes?: string } }
+    >({
+      query: ({ id, body }) => ({
+        url: `/shop/purchases/${id}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: [
+        ...saleRefresh,
+        { type: "FreshChickenStock", id: "PURCHASES" },
+      ],
+    }),
+    deleteShopPurchase: builder.mutation<ApiResponse<void>, string>({
+      query: (id) => ({ url: `/shop/purchases/${id}`, method: "DELETE" }),
+      invalidatesTags: [
+        ...saleRefresh,
+        { type: "FreshChickenStock", id: "PURCHASES" },
+        "Account",
+      ],
+    }),
     listShopSales: builder.query<SalesResponse, void>({
       query: () => "/shop/sales",
       providesTags: (result) => [
@@ -98,9 +138,34 @@ export const shopApi = apiSlice.injectEndpoints({
       query: (body) => ({ url: "/shop/stock/writeoffs", method: "POST", body }),
       invalidatesTags: writeoffRefresh,
     }),
-    listShopStockWriteoffs: builder.query<ApiResponse<StockWriteoffResponse[]>, void>({ query: () => "/shop/stock/writeoffs", providesTags: [{ type: "FreshChickenStock", id: "WRITEOFFS" }] }),
-    updateShopStockWriteoff: builder.mutation<ApiResponse<StockWriteoffResponse>, { id: string; body: StockWriteoffRequest }>({ query: ({ id, body }) => ({ url: `/shop/stock/writeoffs/${id}`, method: "PATCH", body }), invalidatesTags: [...writeoffRefresh, { type: "FreshChickenStock", id: "WRITEOFFS" }] }),
-    deleteShopStockWriteoff: builder.mutation<ApiResponse<void>, string>({ query: (id) => ({ url: `/shop/stock/writeoffs/${id}`, method: "DELETE" }), invalidatesTags: [...writeoffRefresh, { type: "FreshChickenStock", id: "WRITEOFFS" }] }),
+    listShopStockWriteoffs: builder.query<
+      ApiResponse<StockWriteoffResponse[]>,
+      void
+    >({
+      query: () => "/shop/stock/writeoffs",
+      providesTags: [{ type: "FreshChickenStock", id: "WRITEOFFS" }],
+    }),
+    updateShopStockWriteoff: builder.mutation<
+      ApiResponse<StockWriteoffResponse>,
+      { id: string; body: StockWriteoffRequest }
+    >({
+      query: ({ id, body }) => ({
+        url: `/shop/stock/writeoffs/${id}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: [
+        ...writeoffRefresh,
+        { type: "FreshChickenStock", id: "WRITEOFFS" },
+      ],
+    }),
+    deleteShopStockWriteoff: builder.mutation<ApiResponse<void>, string>({
+      query: (id) => ({ url: `/shop/stock/writeoffs/${id}`, method: "DELETE" }),
+      invalidatesTags: [
+        ...writeoffRefresh,
+        { type: "FreshChickenStock", id: "WRITEOFFS" },
+      ],
+    }),
     listDressingBatches: builder.query<
       ApiResponse<DressingBatch[]>,
       { from?: string; to?: string } | void
@@ -176,7 +241,10 @@ export const shopApi = apiSlice.injectEndpoints({
 });
 
 export const {
-  useGetShopIncomingTransfersQuery,
+  useListShopPurchasesQuery,
+  useCreateShopPurchaseMutation,
+  useUpdateShopPurchaseMutation,
+  useDeleteShopPurchaseMutation,
   useListShopSalesQuery,
   useCreateShopSaleMutation,
   useUpdateShopSaleMutation,

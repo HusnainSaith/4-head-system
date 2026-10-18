@@ -28,6 +28,7 @@ const columns: DataTableColumn<DepartmentPayment>[] = [
     cell: (row) => money.format(Number(row.amount)),
   },
   { id: "method", header: "Payment method", cell: (row) => row.paymentMethod },
+  { id: 'partyChange', header: 'Party balance change', align: 'right', cell: row => formatPartyBalance((row.direction === 'received' ? 1 : -1) * Number(row.amount)) },
   notesColumn(),
 ];
 
@@ -125,3 +126,4 @@ export function DepartmentPaymentHistory({
     </section>
   );
 }
+import { formatPartyBalance } from '../party-balance';

@@ -56,75 +56,36 @@ describe('SupplyService', () => {
     });
   });
   it('displays shrinkage in expenses without deducting it again from gross profit', async () => {
-    repository.sumActiveSaleTotal.mockResolvedValueOnce('1342740.00').mockResolvedValueOnce('1342740.00');
-    repository.sumActivePurchaseTotal.mockResolvedValueOnce('1311400.00').mockResolvedValueOnce('1311400.00');
-    repository.sumShrinkageExpenses.mockResolvedValueOnce('2730.00').mockResolvedValueOnce('2730.00');
-    ledger.sumByAccount.mockResolvedValueOnce('6640.00').mockResolvedValueOnce('0.00').mockResolvedValueOnce('6640.00').mockResolvedValueOnce('0.00');
+    repository.sumActiveSaleTotal
+      .mockResolvedValueOnce('1342740.00')
+      .mockResolvedValueOnce('1342740.00');
+    repository.sumActivePurchaseTotal
+      .mockResolvedValueOnce('1311400.00')
+      .mockResolvedValueOnce('1311400.00');
+    repository.sumShrinkageExpenses
+      .mockResolvedValueOnce('2730.00')
+      .mockResolvedValueOnce('2730.00');
+    ledger.sumByAccount
+      .mockResolvedValueOnce('6640.00')
+      .mockResolvedValueOnce('0.00')
+      .mockResolvedValueOnce('6640.00')
+      .mockResolvedValueOnce('0.00');
     const report = await service.getProfitLoss('2026-09-05', '2026-09-05');
-    expect(report.externalOnly).toEqual(expect.objectContaining({ grossProfit: '31340.00', operatingExpenses: '6640.00', shrinkageExpenses: '2730.00', otherExpenses: '3910.00', netProfit: '27430.00' }));
-    expect(repository.sumShrinkageExpenses).toHaveBeenCalledWith('00000000-0000-4000-8000-000000000001', '2026-09-05', '2026-09-05');
-    expect(report.includingInternalTransfers.netProfit).toBe('27930.00');
-  });
-
-  it('settles a transfer under a row lock and returns authoritative balances', async () => {
-    const transfer = {
-      id: '00000000-0000-4000-8000-000000000010',
-      totalAmount: '30000.00',
-      amountSettled: '0.00',
-      remainingBalance: '30000.00',
-      settlementStatus: 'unsettled',
-    } as InternalTransfer;
-    repository.findTransferById.mockResolvedValue(transfer);
-    repository.updateTransfer.mockImplementation(
-      (_id: string, changes: Partial<InternalTransfer>) =>
-        Promise.resolve({ ...transfer, ...changes }),
-    );
-    const result = await service.settleTransfer(
-      transfer.id,
-      {
-        amount: 10000,
-        settlementDate: '2026-07-12',
-        paymentMethod: 'bank',
-        bankAccountId: '00000000-0000-4000-8000-000000000020',
-        bankTransactionMethod: 'app',
-      },
-      '00000000-0000-4000-8000-000000000099',
-    );
-    expect(repository.findTransferById).toHaveBeenCalledWith(
-      transfer.id,
-      manager,
-      true,
-    );
-    expect(repository.updateTransfer).toHaveBeenCalledWith(
-      transfer.id,
+    expect(report.externalOnly).toEqual(
       expect.objectContaining({
-        amountSettled: '10000.00',
-        remainingBalance: '20000.00',
-        settlementStatus: 'partially_settled',
+        grossProfit: '31340.00',
+        operatingExpenses: '6640.00',
+        shrinkageExpenses: '2730.00',
+        otherExpenses: '3910.00',
+        netProfit: '27430.00',
       }),
-      manager,
     );
-    expect(ledger.post).toHaveBeenCalledWith(
-      expect.arrayContaining([
-        expect.objectContaining({ sourceType: 'payment', amount: '10000.00' }),
-      ]),
-      manager,
+    expect(repository.sumShrinkageExpenses).toHaveBeenCalledWith(
+      '00000000-0000-4000-8000-000000000001',
+      '2026-09-05',
+      '2026-09-05',
     );
-    expect(result.remainingBalance).toBe('20000.00');
-  });
-
-  it('rejects another settlement after the transfer is settled', async () => {
-    repository.findTransferById.mockResolvedValue({
-      id: 't1',
-      settlementStatus: 'settled',
-    });
-    await expect(
-      service.settleTransfer(
-        't1',
-        { amount: 1, settlementDate: '2026-07-12', paymentMethod: 'cash' },
-        '00000000-0000-4000-8000-000000000099',
-      ),
-    ).rejects.toBeInstanceOf(ConflictException);
+    expect(report.includingInternalTransfers.netProfit).toBe('27930.00');
   });
 
   it('reverses the old stock movement before applying the updated sale quantity', async () => {

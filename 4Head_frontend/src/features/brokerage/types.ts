@@ -20,7 +20,7 @@ export interface VehicleSummary {
   model: string;
 }
 
-interface BrokerageBase {
+interface BrokerageBase extends PaymentAccountSelection {
   id: string;
   departmentId: string;
   partyId: string | null;
@@ -63,6 +63,7 @@ export interface PaginationMeta {
 }
 
 export interface PaginatedData<T> {
+  summary?: { totalAmount: string; settled: string; outstanding: string };
   items: T[];
   pagination: PaginationMeta;
 }
@@ -112,7 +113,7 @@ export interface CreatePurchaseRequest extends PaymentAccountSelection {
 export type UpdatePurchaseRequest = Partial<CreatePurchaseRequest>;
 
 export interface CreateSaleRequest extends PaymentAccountSelection {
-  destinationType?: "external" | "supply";
+  destinationType?: "external";
   partyId?: string;
   vehicleId?: string;
   quantityKg: number;

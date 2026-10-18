@@ -128,13 +128,12 @@ export class ZakatFundsService {
           .andWhere('cashAccount.isActive = true')
           .andWhere('cashAccount.deletedAt IS NULL')
           .andWhere(
-            '(cashAccount.isShared = true OR cashAccount.departmentId = :departmentId)',
-            { departmentId: dto.departmentId },
+            "cashAccount.isShared = true AND cashAccount.accountName = 'Admin Cash Drawer'",
           )
           .getOne();
         if (!cashAccount)
           throw new BadRequestException(
-            'Select the shared cash drawer or an active drawer for the same department',
+            'Select Admin Cash Drawer',
           );
       } else {
         const bankAccount = await manager.findOne(BankAccount, {

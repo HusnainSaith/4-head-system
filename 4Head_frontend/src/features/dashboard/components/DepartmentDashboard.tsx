@@ -30,11 +30,6 @@ const departmentPath: Record<DepartmentCode, string> = {
   [DepartmentCode.FRESH_CHICKEN_SHOP]: "/fresh-chicken-shop",
 };
 
-const money = new Intl.NumberFormat("en-PK", {
-  style: "currency",
-  currency: "PKR",
-  maximumFractionDigits: 0,
-});
 
 export function DepartmentDashboard() {
   const departmentId = useSelector(selectUserDepartmentId);
@@ -99,13 +94,13 @@ export function DepartmentDashboard() {
         />
         <StatCard
           label="Total receivable"
-          value={money.format(totalReceivable)}
+          value={formatPartyBalance(-totalReceivable)}
           icon={Scale}
           tone="success"
         />
         <StatCard
           label="Total payable"
-          value={money.format(totalPayable)}
+          value={formatPartyBalance(totalPayable)}
           icon={TrendingDown}
           tone="danger"
         />
@@ -141,3 +136,4 @@ export function DepartmentDashboard() {
     </PageContainer>
   );
 }
+import { formatPartyBalance } from '@/features/parties/party-balance';

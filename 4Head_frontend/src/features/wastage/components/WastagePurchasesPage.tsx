@@ -1,3 +1,8 @@
+import { PagedTransactionTable as DataTable } from "@/components/common/PagedTransactionTable";
+import {
+  TransactionSearch,
+  matchesTransactionSearch,
+} from "@/components/common/TransactionSearch";
 import { notesColumn } from "@/components/common/TransactionNotes";
 import { useEffect, useMemo, useState } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -7,7 +12,7 @@ import { useSelector } from "react-redux";
 import { toast } from "sonner";
 import { z } from "zod";
 import { ConfirmDialog } from "@/components/common/ConfirmDialog";
-import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
+import { type DataTableColumn } from "@/components/common/DataTable";
 import { EmptyState } from "@/components/common/EmptyState";
 import { ErrorState } from "@/components/common/ErrorState";
 import { PageHeader } from "@/components/common/PageHeader";
@@ -43,7 +48,7 @@ import {
   selectUserDepartmentCode,
   selectUserRole,
 } from "@/features/auth/authSlice";
-import { useListPartiesQuery } from "@/features/parties/partiesApi";
+import { useDepartmentParties } from "@/features/parties/useDepartmentParties";
 import { PartyType } from "@/features/parties/types";
 import { DepartmentBalancesPanel } from "@/features/parties/components/DepartmentBalancesPanel";
 import { DepartmentVehicleSelect } from "@/features/vehicles/components/DepartmentVehicleSelect";
@@ -64,9 +69,7 @@ const purchaseSchema = z
       z.literal(""),
       z.string().uuid("Select a valid shop owner."),
     ]),
-    quantityKg: z.coerce
-      .number()
-      .positive("Weight must be greater than zero."),
+    quantityKg: z.coerce.number().positive("Weight must be greater than zero."),
     ratePerKg: z.coerce.number().positive("Rate must be greater than zero."),
     amountPaid: z.coerce.number().min(0, "Amount paid cannot be negative."),
     paymentMethod: z.enum(["cash", "bank", "credit"]),
@@ -105,8 +108,9 @@ const money = new Intl.NumberFormat("en-PK", {
 const today = () => new Date().toISOString().slice(0, 10);
 
 export function WastagePurchasesPage() {
+  const [search, setSearch] = useState("");
   const purchasesQuery = useListPurchasesQuery();
-  const partiesQuery = useListPartiesQuery({
+  const partiesQuery = useDepartmentParties(DepartmentCode.WASTAGE, {
     type: PartyType.SHOP_OWNER,
     limit: 100,
   });
@@ -183,7 +187,7 @@ export function WastagePurchasesPage() {
     {
       id: "outstanding",
       header: "Initial payable",
-      cell: (row) => money.format(Number(row.outstandingAmount)),
+      cell: (row) => formatPartyBalance(transactionPartyBalance('purchase', row.outstandingAmount)),
       align: "right",
     },
     { id: "date", header: "Purchase date", cell: (row) => row.purchaseDate },
@@ -268,9 +272,22 @@ export function WastagePurchasesPage() {
         }
       />
       <DepartmentBalancesPanel departmentCode={DepartmentCode.WASTAGE} />
+      <TransactionSearch value={search} onChange={setSearch} />
       <DataTable
+        dateField="purchaseDate"
+        filterKey={search}
         columns={columns}
-        data={purchasesQuery.data?.data ?? []}
+        data={(purchasesQuery.data?.data ?? []).filter((record) =>
+          matchesTransactionSearch(
+            {
+              ...record,
+              partyName: record.partyId
+                ? partyNames.get(record.partyId)
+                : undefined,
+            },
+            search,
+          ),
+        )}
         getRowId={(row) => row.id}
         emptyContent={
           <EmptyState
@@ -358,6 +375,15 @@ function PurchaseDialog({
       notes: "",
     },
   });
+  const [partySearch, setPartySearch] = useState("");
+  const searchedParties = useDepartmentParties(
+    DepartmentCode.WASTAGE,
+    { search: partySearch.trim(), type: PartyType.SHOP_OWNER, limit: 100 },
+    { skip: !open || !partySearch.trim() },
+  );
+  const selectableParties = partySearch.trim()
+    ? (searchedParties.data?.data.items ?? [])
+    : parties;
   const [accountSelection, setAccountSelection] =
     useState<PaymentAccountSelection>({});
   useEffect(() => {
@@ -411,6 +437,12 @@ function PurchaseDialog({
           )}
         >
           <Field label="Shop owner" error={errors.partyId?.message}>
+            <Input
+              aria-label="Search parties"
+              placeholder="Search parties…"
+              value={partySearch}
+              onChange={(e) => setPartySearch(e.target.value)}
+            />
             <Select
               value={partyId || "none"}
               onValueChange={(value) =>
@@ -424,11 +456,17 @@ function PurchaseDialog({
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="none">None</SelectItem>
-                {parties.map((party) => (
-                  <SelectItem key={party.id} value={party.id}>
-                    {party.name}
-                  </SelectItem>
-                ))}
+                {selectableParties
+                  .filter((p) =>
+                    p.name
+                      .toLowerCase()
+                      .includes(partySearch.toLowerCase().trim()),
+                  )
+                  .map((party) => (
+                    <SelectItem key={party.id} value={party.id}>
+                      {party.name}
+                    </SelectItem>
+                  ))}
               </SelectContent>
             </Select>
           </Field>
@@ -535,3 +573,4 @@ function Field({
     </div>
   );
 }
+import { formatPartyBalance, transactionPartyBalance } from '@/features/parties/party-balance';

@@ -10,10 +10,6 @@ import { useListDepartmentsQuery } from "@/features/vehicles/vehiclesApi";
 import { useGetOutstandingBalancesQuery } from "../reportsApi";
 import type { OutstandingBalance } from "../types";
 import { DepartmentFilter } from "./ReportControls";
-const money = new Intl.NumberFormat("en-PK", {
-  style: "currency",
-  currency: "PKR",
-});
 export function OutstandingBalancesPage() {
   const navigate = useNavigate();
   const [department, setDepartment] = useState("");
@@ -38,7 +34,7 @@ export function OutstandingBalancesPage() {
             Number(r.balance) < 0 ? "text-emerald-600" : "text-red-600"
           }
         >
-          {money.format(Math.abs(Number(r.balance)))}{" "}
+          {formatPartyBalance(r.balance)}{" "}
           {Number(r.balance) < 0 ? "receivable" : "payable"}
         </span>
       ),
@@ -70,3 +66,4 @@ export function OutstandingBalancesPage() {
     </PageContainer>
   );
 }
+import { formatPartyBalance } from '@/features/parties/party-balance';

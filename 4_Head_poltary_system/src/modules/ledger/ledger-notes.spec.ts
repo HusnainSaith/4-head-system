@@ -6,6 +6,7 @@ describe('Statement transaction notes', () => {
     async (sourceType) => {
       const query: any = {};
       for (const method of [
+        'withDeleted',
         'leftJoin',
         'addSelect',
         'where',
@@ -34,6 +35,7 @@ describe('Statement transaction notes', () => {
         new Date('2026-01-01'),
         new Date('2026-12-31'),
       );
+      expect(query.withDeleted).toHaveBeenCalled();
       expect(entries.map((entry) => entry.description)).toEqual(notes);
       expect(entries.map((entry) => entry.amount)).toEqual([
         '100.00',

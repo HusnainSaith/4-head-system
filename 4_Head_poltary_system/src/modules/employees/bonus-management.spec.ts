@@ -1,3 +1,4 @@
+import { LedgerService as ReportLedgerService } from '../ledger/ledger.service';
 import { DataSource } from 'typeorm';
 import { validate } from 'class-validator';
 import { EmployeesService } from './employees.service';
@@ -100,11 +101,78 @@ describe('bonus management', () => {
           accountCode: 'employee_salary_payable',
           entryType: 'debit',
           amount: '500.00',
+          entryDate: new Date('2026-09-01T00:00:00.000Z'),
         }),
       ]),
       manager,
     );
   });
+
+  it.each(['BROKERAGE', 'SUPPLY', 'WASTAGE', 'FRESH_CHICKEN_SHOP'])(
+    'removes deleted bonuses from the original-month payroll report in %s',
+    async (departmentId) => {
+      manager.findOne.mockImplementation(async (entity: any) =>
+        entity === Employee ? { id: 'e', departmentId } : bonus,
+      );
+      const entries: any[] = [
+        {
+          departmentId,
+          accountCode: 'payroll_expense',
+          entryType: 'debit',
+          amount: '30500.00',
+          entryDate: new Date('2026-09-01'),
+          sourceType: 'salary',
+        },
+      ];
+      ledger.post.mockImplementation(async (posted: any[]) =>
+        entries.push(...posted),
+      );
+      const reportLedger = new ReportLedgerService({
+        findByDepartmentAndDateRange: async (
+          dept: string,
+          from: string,
+          to: string,
+          code: string,
+        ) =>
+          entries.filter(
+            (entry) =>
+              entry.departmentId === dept &&
+              entry.accountCode === code &&
+              entry.entryDate.toISOString().slice(0, 10) >= from &&
+              entry.entryDate.toISOString().slice(0, 10) <= to,
+          ),
+        pendingPayrollBonuses: async () => 0,
+      } as any);
+      expect(
+        await reportLedger.sumByAccount(
+          departmentId,
+          'payroll_expense',
+          '2026-09-01',
+          '2026-09-30',
+          'debit',
+        ),
+      ).toBe('30500.00');
+      await service.changeBonus('e', 'b', null, 'admin');
+      expect(
+        await reportLedger.sumByAccount(
+          departmentId,
+          'payroll_expense',
+          '2026-09-01',
+          '2026-09-30',
+          'debit',
+        ),
+      ).toBe('30000.00');
+      expect(
+        await reportLedger.sumByAccount(
+          departmentId,
+          'payroll_expense',
+          '2026-10-01',
+          '2026-10-31',
+          'debit',
+        ),
+      ).toBe('0.00');
+    },
+  );
   it('rejects a reduction below salary already withdrawn before any writes', async () => {
     runs[0].amountPaid = '30400.00';
     await expect(

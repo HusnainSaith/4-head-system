@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
+import { useState } from "react";
 import { useSelector } from "react-redux";
 import { toast } from "sonner";
 import { DataTable, type DataTableColumn } from "@/components/common/DataTable";
@@ -100,16 +101,32 @@ export function ExpensesPage() {
       cell: (e) => e.description ?? "—",
     },
     ...(management
-      ? [{
-          id: "actions",
-          header: "Actions",
-          cell: (expense: Expense) => (
-            <div className="flex gap-2">
-              <InvoiceButton sourceType="expense" sourceId={expense.id} label="Print" />
-              {expense.sourceType === "manual" ? <Button variant="outline" onClick={() => { setEditing(expense); setOpen(true); }}>Edit</Button> : null}
-            </div>
-          ),
-        }]
+      ? [
+          {
+            id: "actions",
+            header: "Actions",
+            cell: (expense: Expense) => (
+              <div className="flex gap-2">
+                <InvoiceButton
+                  sourceType="expense"
+                  sourceId={expense.id}
+                  label="Print"
+                />
+                {expense.sourceType === "manual" ? (
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      setEditing(expense);
+                      setOpen(true);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                ) : null}
+              </div>
+            ),
+          },
+        ]
       : []),
   ];
   if (query.isLoading) return <PageSkeleton rows={6} />;
@@ -161,6 +178,9 @@ export function ExpensesPage() {
         <Card>
           <CardHeader>
             <CardTitle>Expense Categories</CardTitle>
+            <Button asChild variant="outline">
+              <Link to="/expenses/categories">Manage categories</Link>
+            </Button>
           </CardHeader>
           <CardContent className="space-y-2">
             {(categories.data?.data ?? []).map((c) => (
@@ -183,26 +203,37 @@ export function ExpensesPage() {
           </CardContent>
         </Card>
       ) : null}
-      <ExpenseDialog
-        open={open}
-        expense={editing}
-        fixedDepartmentId={management ? undefined : (own ?? undefined)}
-        departments={departments.data?.data ?? []}
-        categories={(categories.data?.data ?? []).filter((c) => c.isActive)}
-        loading={state.isLoading || updateState.isLoading}
-        onClose={() => { setOpen(false); setEditing(null); }}
-        onSubmit={async (body) => {
-          try {
-            if (editing) await updateExpense({ id: editing.id, body }).unwrap();
-            else await create(body).unwrap();
-            toast.success(editing ? "Expense updated" : "Manual expense created");
+      {open ? (
+        <ExpenseDialog
+          key={editing?.id ?? "new"}
+          open={open}
+          expense={editing}
+          fixedDepartmentId={management ? undefined : (own ?? undefined)}
+          departments={departments.data?.data ?? []}
+          categories={(categories.data?.data ?? []).filter(
+            (c) => c.isActive || c.id === editing?.categoryId,
+          )}
+          loading={state.isLoading || updateState.isLoading}
+          onClose={() => {
             setOpen(false);
             setEditing(null);
-          } catch (error) {
-            toast.error(getApiErrorMessage(error));
-          }
-        }}
-      />
+          }}
+          onSubmit={async (body) => {
+            try {
+              if (editing)
+                await updateExpense({ id: editing.id, body }).unwrap();
+              else await create(body).unwrap();
+              toast.success(
+                editing ? "Expense updated" : "Manual expense created",
+              );
+              setOpen(false);
+              setEditing(null);
+            } catch (error) {
+              toast.error(getApiErrorMessage(error));
+            }
+          }}
+        />
+      ) : null}
     </PageContainer>
   );
 }
@@ -252,29 +283,30 @@ function ExpenseDialog({
   onClose: () => void;
   onSubmit: (body: CreateExpenseRequest) => Promise<void>;
 }) {
-  const [department, setDepartment] = useState(fixedDepartmentId ?? "");
-  const [category, setCategory] = useState("");
-  const [amount, setAmount] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-  const [description, setDescription] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">("cash");
-  const [accountSelection, setAccountSelection] = useState<PaymentAccountSelection>({});
-  useEffect(() => {
-    if (!open) return;
-    setDepartment(expense?.departmentId ?? fixedDepartmentId ?? "");
-    setCategory(expense?.categoryId ?? "");
-    setAmount(expense?.amount ?? "");
-    setDate(expense?.expenseDate.slice(0, 10) ?? new Date().toISOString().slice(0, 10));
-    setDescription(expense?.description ?? "");
-    setPaymentMethod(expense?.paymentMethod ?? "cash");
-    setAccountSelection(expense ? {
-      cashAccountId: expense.cashAccountId,
-      bankAccountId: expense.bankAccountId,
-      bankTransactionMethod: expense.bankTransactionMethod,
-      chequeNumber: expense.chequeNumber,
-      appReference: expense.appReference,
-    } : {});
-  }, [expense, fixedDepartmentId, open]);
+  const [department, setDepartment] = useState(
+    expense?.departmentId ?? fixedDepartmentId ?? "",
+  );
+  const [category, setCategory] = useState(expense?.categoryId ?? "");
+  const [amount, setAmount] = useState(expense?.amount ?? "");
+  const [date, setDate] = useState(
+    expense?.expenseDate.slice(0, 10) ?? new Date().toISOString().slice(0, 10),
+  );
+  const [description, setDescription] = useState(expense?.description ?? "");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">(
+    expense?.paymentMethod ?? "cash",
+  );
+  const [accountSelection, setAccountSelection] =
+    useState<PaymentAccountSelection>(
+      expense
+        ? {
+            cashAccountId: expense.cashAccountId,
+            bankAccountId: expense.bankAccountId,
+            bankTransactionMethod: expense.bankTransactionMethod,
+            chequeNumber: expense.chequeNumber,
+            appReference: expense.appReference,
+          }
+        : {},
+    );
   return (
     <Dialog
       open={open}
@@ -284,7 +316,9 @@ function ExpenseDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{expense ? "Edit Manual Expense" : "Add Manual Expense"}</DialogTitle>
+          <DialogTitle>
+            {expense ? "Edit Manual Expense" : "Add Manual Expense"}
+          </DialogTitle>
         </DialogHeader>
         <form
           className="space-y-3"
@@ -312,20 +346,22 @@ function ExpenseDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {categories
-                  .filter((c) => !c.isSystemGenerated)
-                  .map((c) => (
-                    <SelectItem key={c.id} value={c.id}>
-                      {c.name}
-                    </SelectItem>
-                  ))}
+                {categories.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    {c.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
           {fixedDepartmentId ? (
             <div>
               <Label htmlFor="expense-fixed-department">Department</Label>
-              <Input id="expense-fixed-department" value={fixedDepartmentId} disabled />
+              <Input
+                id="expense-fixed-department"
+                value={fixedDepartmentId}
+                disabled
+              />
             </div>
           ) : (
             <div>
@@ -347,6 +383,9 @@ function ExpenseDialog({
           <div>
             <Label htmlFor="expense-amount">Amount</Label>
             <Input
+              required
+              min="0.01"
+              step="0.01"
               id="expense-amount"
               type="number"
               value={amount}
@@ -370,8 +409,30 @@ function ExpenseDialog({
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
-          <div><Label>Payment method</Label><Select value={paymentMethod} onValueChange={(value) => { setPaymentMethod(value as "cash" | "bank"); setAccountSelection({}); }}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="cash">Cash</SelectItem><SelectItem value="bank">Bank</SelectItem></SelectContent></Select></div>
-          <PaymentAccountFields paymentMethod={paymentMethod} value={accountSelection} onChange={setAccountSelection} departmentId={fixedDepartmentId ?? department} />
+          <div>
+            <Label>Payment method</Label>
+            <Select
+              value={paymentMethod}
+              onValueChange={(value) => {
+                setPaymentMethod(value as "cash" | "bank");
+                setAccountSelection({});
+              }}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">Cash</SelectItem>
+                <SelectItem value="bank">Bank</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <PaymentAccountFields
+            paymentMethod={paymentMethod}
+            value={accountSelection}
+            onChange={setAccountSelection}
+            departmentId={fixedDepartmentId ?? department}
+          />
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel

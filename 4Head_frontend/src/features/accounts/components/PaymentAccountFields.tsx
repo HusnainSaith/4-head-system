@@ -10,8 +10,6 @@ export function PaymentAccountFields({
   paymentMethod,
   value,
   onChange,
-  departmentId,
-  adminOnly = false,
 }: {
   paymentMethod: "cash" | "bank" | "credit";
   value: PaymentAccountSelection;
@@ -26,27 +24,16 @@ export function PaymentAccountFields({
     skip: paymentMethod !== "bank",
   });
   const allCashOptions = cash.data?.data ?? [];
-  const departmentCashOptions = allCashOptions.filter(
+  const cashOptions = allCashOptions.filter(
     (item) =>
-      item.account.isShared ||
-      !departmentId ||
-      item.account.departmentId === departmentId,
+      item.account.isShared && item.account.accountName === "Admin Cash Drawer",
   );
-  const filteredCashOptions = adminOnly
-    ? departmentCashOptions.filter((item) =>
-        item.account.accountName.toLowerCase().includes("admin"),
-      )
-    : departmentCashOptions;
-  const cashOptions =
-    filteredCashOptions.length === 0 && allCashOptions.length === 1 && !adminOnly
-      ? allCashOptions
-      : filteredCashOptions;
 
   useEffect(() => {
     if (
       paymentMethod === "cash" &&
       cashOptions.length === 1 &&
-      !value.cashAccountId
+      value.cashAccountId !== cashOptions[0].account.id
     ) {
       onChange({ cashAccountId: cashOptions[0].account.id });
     }

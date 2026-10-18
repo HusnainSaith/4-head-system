@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ShopSale } from './entities/shop-sale.entity';
+import { ShopPurchase } from './entities/shop-purchase.entity';
 import { InternalTransfer } from '../supply/entities/internal-transfer.entity';
 import { IShopRepository } from './interfaces/shop-repository.interface';
 import { ShopDressingBatch } from './entities/shop-dressing-batch.entity';
@@ -53,7 +54,8 @@ export class FreshChickenShopRepository implements IShopRepository {
   }
 
   async sumActiveSaleQuantity(from?: string, to?: string): Promise<string> {
-    const query = this.saleRepo.createQueryBuilder('sale')
+    const query = this.saleRepo
+      .createQueryBuilder('sale')
       .select('COALESCE(SUM(sale.quantityKg), 0)', 'total')
       .where('sale.deletedAt IS NULL');
     if (from) query.andWhere('sale.saleDate >= :from', { from });
@@ -62,16 +64,31 @@ export class FreshChickenShopRepository implements IShopRepository {
     return Number(row?.total ?? 0).toFixed(3);
   }
 
-  async sumActiveIncomingQuantity(departmentId: string, from?: string, to?: string): Promise<string> {
+  async sumActiveIncomingQuantity(
+    departmentId: string,
+    from?: string,
+    to?: string,
+  ): Promise<string> {
     const repo = this.saleRepo.manager.getRepository(InternalTransfer);
-    const query = repo.createQueryBuilder('transfer')
+    const query = repo
+      .createQueryBuilder('transfer')
       .select('COALESCE(SUM(transfer.quantityKg), 0)', 'total')
       .where('transfer.deletedAt IS NULL')
       .andWhere('transfer.toDepartmentId = :departmentId', { departmentId });
     if (from) query.andWhere('transfer.transferDate >= :from', { from });
     if (to) query.andWhere('transfer.transferDate <= :to', { to });
     const row = await query.getRawOne<{ total: string }>();
-    return Number(row?.total ?? 0).toFixed(3);
+    const purchases = this.saleRepo.manager
+      .getRepository(ShopPurchase)
+      .createQueryBuilder('purchase')
+      .select('COALESCE(SUM(purchase.quantityKg), 0)', 'total')
+      .where('purchase.departmentId = :departmentId', { departmentId })
+      .andWhere('purchase.deletedAt IS NULL')
+      .andWhere('purchase.status = :status', { status: 'posted' });
+    if (from) purchases.andWhere('purchase.purchaseDate >= :from', { from });
+    if (to) purchases.andWhere('purchase.purchaseDate <= :to', { to });
+    const purchased = await purchases.getRawOne<{ total: string }>();
+    return (Number(row?.total ?? 0) + Number(purchased?.total ?? 0)).toFixed(3);
   }
 
   async findIncomingTransfers(

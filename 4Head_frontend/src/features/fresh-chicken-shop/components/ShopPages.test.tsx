@@ -5,10 +5,11 @@ import authReducer, { credentialsSet } from "@/features/auth/authSlice";
 import { apiSlice } from "@/store/apiSlice";
 import { PartyType } from "@/features/parties/types";
 import { ownerUser, authenticatedState } from "@/test/auth-fixtures";
-import { IncomingTransfersPage } from "./IncomingTransfersPage";
 import { ShopSalesPage } from "./ShopSalesPage";
 import { ShopStockPage } from "./ShopStockPage";
-vi.mock("@/features/accounts/components", () => ({ PaymentAccountFields: () => null }));
+vi.mock("@/features/accounts/components", () => ({
+  PaymentAccountFields: () => null,
+}));
 
 vi.mock("@/features/parties/components/DepartmentBalancesPanel", () => ({
   DepartmentBalancesPanel: () => null,
@@ -28,7 +29,7 @@ const {
 } = vi.hoisted(() => ({
   mockCreateShopSale: vi.fn(),
   mockListPartiesQuery: vi.fn(() => ({
-    data: {
+    currentData: {
       data: {
         items: [{ id: "c1", name: "Walk-in Customer", partyType: "customer" }],
       },
@@ -128,9 +129,20 @@ vi.mock("@/features/fresh-chicken-shop/shopApi", () => ({
     vi.fn().mockResolvedValue({ data: { valuationAmount: "580.00" } }),
     { isLoading: false },
   ]),
-  useListShopStockWriteoffsQuery: vi.fn(() => ({ data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() })),
-  useUpdateShopStockWriteoffMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
-  useDeleteShopStockWriteoffMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
+  useListShopStockWriteoffsQuery: vi.fn(() => ({
+    data: { data: [] },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  })),
+  useUpdateShopStockWriteoffMutation: vi.fn(() => [
+    vi.fn(),
+    { isLoading: false },
+  ]),
+  useDeleteShopStockWriteoffMutation: vi.fn(() => [
+    vi.fn(),
+    { isLoading: false },
+  ]),
   useGetShopProfitLossQuery: vi.fn(() => ({
     data: { data: mockReport },
     isLoading: false,
@@ -153,31 +165,6 @@ function wrap(ui: React.ReactElement) {
 }
 
 // ── IncomingTransfersPage ──────────────────────────────────────────────────
-describe("IncomingTransfersPage", () => {
-  it("renders transfer data read-only", () => {
-    wrap(<IncomingTransfersPage />);
-    expect(screen.getByText("Incoming Transfers")).toBeInTheDocument();
-    expect(screen.getByText("10.000 kg")).toBeInTheDocument();
-    expect(screen.getByText("partially settled")).toBeInTheDocument();
-  });
-
-  it("has no create/settle action buttons", () => {
-    wrap(<IncomingTransfersPage />);
-    expect(
-      screen.queryByRole("button", { name: /new transfer/i }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /settle/i }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows caption directing users to Supply side", () => {
-    wrap(<IncomingTransfersPage />);
-    expect(
-      screen.getByText(/Supply → Internal Transfers/i),
-    ).toBeInTheDocument();
-  });
-});
 
 // ── ShopSalesPage ──────────────────────────────────────────────────────────
 describe("ShopSalesPage", () => {
@@ -208,7 +195,12 @@ describe("ShopSalesPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
 
     expect(mockListPartiesQuery).toHaveBeenCalledWith(
-      { type: PartyType.CUSTOMER, limit: 100 },
+      {
+        departmentId: "dept1",
+        type: PartyType.CUSTOMER,
+        search: undefined,
+        limit: 100,
+      },
       { skip: false },
     );
   });
@@ -262,9 +254,7 @@ describe("ShopStockPage", () => {
     wrap(<ShopStockPage />);
     expect(screen.getByText("42.500 kg")).toBeInTheDocument();
     expect(screen.getByText("30.000 kg")).toBeInTheDocument();
-    expect(
-      screen.getByText(/internal transfers from Supply/i),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/external purchases/i)).toBeInTheDocument();
   });
 
   it("opens write-off dialog", () => {

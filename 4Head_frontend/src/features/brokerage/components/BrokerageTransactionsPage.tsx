@@ -1,3 +1,6 @@
+import { useDebounce } from "@/hooks/useDebounce";
+import { TransactionSearch } from "@/components/common/TransactionSearch";
+import { formatPartyBalance, transactionPartyBalance } from '@/features/parties/party-balance';
 import { TransactionNotes } from "@/components/common/TransactionNotes";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -31,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { selectUserRole } from "@/features/auth/authSlice";
 import { getApiErrorMessage } from "@/lib/api-error";
-import { useListPartiesQuery } from "@/features/parties/partiesApi";
+import { useDepartmentParties } from "@/features/parties/useDepartmentParties";
 import { PartyType } from "@/features/parties/types";
 import { DepartmentBalancesPanel } from "@/features/parties/components/DepartmentBalancesPanel";
 import { PartySettlementDialog } from "@/features/parties/components/PartySettlementDialog";
@@ -63,13 +66,22 @@ const money = new Intl.NumberFormat("en-PK", {
 type Kind = "purchase" | "sale";
 
 export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const debouncedSearch = useDebounce(search.trim(), 300);
   const [filterDate, setFilterDate] = useState<string>("");
-  const purchases = useListBrokeragePurchasesQuery(undefined, {
-    skip: kind !== "purchase",
-  });
-  const sales = useListBrokerageSalesQuery(undefined, {
-    skip: kind !== "sale",
-  });
+  const purchases = useListBrokeragePurchasesQuery(
+    { search: debouncedSearch || undefined, page, limit: 20, from: filterDate || undefined, to: filterDate || undefined },
+    {
+      skip: kind !== "purchase",
+    },
+  );
+  const sales = useListBrokerageSalesQuery(
+    { search: debouncedSearch || undefined, page, limit: 20, from: filterDate || undefined, to: filterDate || undefined },
+    {
+      skip: kind !== "sale",
+    },
+  );
   const query = kind === "purchase" ? purchases : sales;
   const role = useSelector(selectUserRole);
   const canWrite =
@@ -88,51 +100,51 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
   const [showSettlement, setShowSettlement] = useState(false);
   const [createPurchase, purchaseState] = useCreateBrokeragePurchaseMutation();
   const [createSale, saleState] = useCreateBrokerageSaleMutation();
-  const [updatePurchase] = useUpdateBrokeragePurchaseMutation();
-  const [updateSale] = useUpdateBrokerageSaleMutation();
+  const [updatePurchase, updatePurchaseState] =
+    useUpdateBrokeragePurchaseMutation();
+  const [updateSale, updateSaleState] = useUpdateBrokerageSaleMutation();
   const [deletePurchase, deletePurchaseState = { isLoading: false }] =
     useDeleteBrokeragePurchaseMutation();
   const [deleteSale, deleteSaleState = { isLoading: false }] =
     useDeleteBrokerageSaleMutation();
 
-  const allRecords = (query.data?.data?.items ?? []) as Array<
+  const queryData = query.currentData ?? (query.isFetching ? undefined : query.data);
+  const allRecords = (queryData?.data?.items ?? []) as Array<
     BrokeragePurchase | BrokerageSale
   >;
 
-  const filteredRecords = filterDate
-    ? allRecords.filter((r) => {
-        const recordDate =
-          kind === "purchase"
-            ? (r as BrokeragePurchase).purchaseDate
-            : (r as BrokerageSale).saleDate;
-        return recordDate === filterDate;
-      })
-    : allRecords;
+  const filteredRecords = allRecords;
 
   // Calculate totals for filtered date
-  const filteredTotals = {
+  const pageTotals = {
     totalAmount: filteredRecords.reduce(
       (sum, r) => sum + Number(r.totalAmount),
-      0
+      0,
     ),
     settled:
       kind === "purchase"
         ? filteredRecords.reduce(
             (sum, r) => sum + Number((r as BrokeragePurchase).amountPaid),
-            0
+            0,
           )
         : filteredRecords.reduce(
             (sum, r) => sum + Number((r as BrokerageSale).amountReceived),
-            0
+            0,
           ),
     outstanding: filteredRecords.reduce(
       (sum, r) => sum + Number(r.outstandingAmount),
-      0
+      0,
     ),
   };
 
+  const filteredTotals = queryData?.data?.summary ?? pageTotals;
+
   const columns: DataTableColumn<BrokeragePurchase | BrokerageSale>[] = [
-    { id: "notes", header: "Notes", cell: (row) => <TransactionNotes notes={row.description} /> },
+    {
+      id: "notes",
+      header: "Notes",
+      cell: (row) => <TransactionNotes notes={row.description} />,
+    },
     {
       id: "party",
       header: kind === "purchase" ? "Seller (Farm)" : "Buyer",
@@ -196,7 +208,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
     {
       id: "outstanding",
       header: kind === "purchase" ? "Initial payable" : "Initial receivable",
-      cell: (row) => money.format(Number(row.outstandingAmount)),
+      cell: (row) => formatPartyBalance(transactionPartyBalance(kind, row.outstandingAmount)),
       align: "right",
     },
     { id: "payment", header: "Payment", cell: (row) => row.paymentMethod },
@@ -270,10 +282,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
         actions={
           canWrite ? (
             <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={() => setShowSettlement(true)}
-              >
+              <Button variant="outline" onClick={() => setShowSettlement(true)}>
                 <Handshake className="h-4 w-4" />
                 Settle Payment
               </Button>
@@ -297,16 +306,13 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
         <Input
           type="date"
           value={filterDate}
-          onChange={(e) => setFilterDate(e.target.value)}
+          onChange={(e) => {setFilterDate(e.target.value); setPage(1);}}
+          aria-label="Filter transactions by date"
           placeholder="Filter by date"
           className="w-48"
         />
         {filterDate && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setFilterDate("")}
-          >
+          <Button variant="outline" size="sm" onClick={() => {setFilterDate(""); setPage(1);}}>
             Clear filter
           </Button>
         )}
@@ -316,9 +322,11 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
       {filterDate && (
         <div className="mb-4 grid grid-cols-3 gap-4">
           <div className="rounded-lg border bg-blue-50 p-4">
-            <div className="text-sm font-medium text-gray-600">TOTAL {kind === "purchase" ? "PAYABLE" : "RECEIVABLE"}</div>
+            <div className="text-sm font-medium text-gray-600">
+              TOTAL {kind === "purchase" ? "PURCHASES" : "SALES"}
+            </div>
             <div className="mt-2 text-2xl font-bold">
-              {money.format(filteredTotals.totalAmount)}
+              {money.format(Number(filteredTotals.totalAmount))}
             </div>
             <div className="mt-1 text-xs text-gray-500">
               {kind === "purchase"
@@ -332,7 +340,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
               {kind === "purchase" ? "PAID" : "RECEIVED"}
             </div>
             <div className="mt-2 text-2xl font-bold">
-              {money.format(filteredTotals.settled)}
+              {money.format(Number(filteredTotals.settled))}
             </div>
             <div className="mt-1 text-xs text-gray-500">
               {kind === "purchase"
@@ -344,7 +352,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
           <div className="rounded-lg border bg-orange-50 p-4">
             <div className="text-sm font-medium text-gray-600">OUTSTANDING</div>
             <div className="mt-2 text-2xl font-bold">
-              {money.format(filteredTotals.outstanding)}
+              {formatPartyBalance(transactionPartyBalance(kind, filteredTotals.outstanding))}
             </div>
             <div className="mt-1 text-xs text-gray-500">
               {kind === "purchase"
@@ -355,9 +363,13 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
         </div>
       )}
 
+      <TransactionSearch value={search} onChange={(value) => {setSearch(value); setPage(1);}} />
       <DataTable
         columns={columns}
         data={filteredRecords}
+        isLoading={query.isFetching}
+        pagination={queryData?.data?.pagination ? {page, pageSize: 20, total: queryData.data.pagination.total} : undefined}
+        onPageChange={setPage}
         getRowId={(row) => row.id}
         emptyContent={<EmptyState title={`No ${kind}s recorded`} />}
       />
@@ -366,7 +378,12 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
         kind={kind}
         open={open}
         editingRecord={editingRecord}
-        loading={purchaseState.isLoading || saleState.isLoading}
+        loading={
+          purchaseState.isLoading ||
+          saleState.isLoading ||
+          updatePurchaseState?.isLoading ||
+          updateSaleState?.isLoading
+        }
         onClose={() => {
           setOpen(false);
           setEditingRecord(null);
@@ -384,6 +401,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
                     ratePerKg: values.ratePerKg,
                     amountPaid: values.paymentAmount,
                     paymentMethod: values.paymentMethod,
+                    ...values.accountSelection,
                     purchaseDate: values.date,
                     vehicleId: values.vehicleId || undefined,
                     description: values.description || undefined,
@@ -398,6 +416,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
                     ratePerKg: values.ratePerKg,
                     amountReceived: values.paymentAmount,
                     paymentMethod: values.paymentMethod,
+                    ...values.accountSelection,
                     saleDate: values.date,
                     vehicleId: values.vehicleId || undefined,
                     description: values.description || undefined,
@@ -457,13 +476,19 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
         loading={deletePurchaseState.isLoading || deleteSaleState.isLoading}
         onConfirm={() => {
           if (!pendingDelete) return;
-          const mutation = kind === "purchase"
-            ? deletePurchase(pendingDelete.id)
-            : deleteSale(pendingDelete.id);
-          void mutation.unwrap().then(() => {
-            toast.success(`${kind === "purchase" ? "Purchase" : "Sale"} cancelled`);
-            setPendingDelete(null);
-          }).catch((error) => toast.error(getApiErrorMessage(error)));
+          const mutation =
+            kind === "purchase"
+              ? deletePurchase(pendingDelete.id)
+              : deleteSale(pendingDelete.id);
+          void mutation
+            .unwrap()
+            .then(() => {
+              toast.success(
+                `${kind === "purchase" ? "Purchase" : "Sale"} cancelled`,
+              );
+              setPendingDelete(null);
+            })
+            .catch((error) => toast.error(getApiErrorMessage(error)));
         }}
       />
 
@@ -477,7 +502,7 @@ export function BrokerageTransactionsPage({ kind }: { kind: Kind }) {
 }
 
 type FormValues = {
-  destinationType?: "external" | "supply";
+  destinationType?: "external";
   partyId?: string;
   quantityKg: number;
   ratePerKg: number;
@@ -504,10 +529,9 @@ function TransactionDialog({
   onClose: () => void;
   onSubmit: (values: FormValues) => Promise<void>;
 }) {
+  const [partySearch, setPartySearch] = useState("");
   const [partyId, setPartyId] = useState("");
-  const [destinationType, setDestinationType] = useState<"external" | "supply">(
-    "external"
-  );
+  const destinationType = "external";
   const [quantity, setQuantity] = useState("");
   const [rate, setRate] = useState("");
   const [paymentMethod, setPaymentMethod] =
@@ -523,33 +547,41 @@ function TransactionDialog({
   // Update form when editingRecord changes
   React.useEffect(() => {
     if (editingRecord) {
+      setAccountSelection({
+        cashAccountId: editingRecord.cashAccountId,
+        bankAccountId: editingRecord.bankAccountId,
+        bankTransactionMethod: editingRecord.bankTransactionMethod,
+        chequeNumber: editingRecord.chequeNumber,
+        appReference: editingRecord.appReference,
+      });
       setPartyId(editingRecord.partyId || "");
       setQuantity(editingRecord.quantityKg.toString());
       setRate(editingRecord.ratePerKg.toString());
       setPaymentMethod(
-        (editingRecord.paymentMethod as BrokeragePaymentMethod) || "cash"
+        (editingRecord.paymentMethod as BrokeragePaymentMethod) || "cash",
       );
       setDescription(editingRecord.description || "");
       setVehicleId(editingRecord.vehicleId || "");
 
       if (kind === "purchase") {
         setPaymentAmount(
-          (editingRecord as BrokeragePurchase).amountPaid.toString()
+          (editingRecord as BrokeragePurchase).amountPaid.toString(),
         );
-        setDate((editingRecord as BrokeragePurchase).purchaseDate);
+        setDate(
+          String((editingRecord as BrokeragePurchase).purchaseDate).slice(
+            0,
+            10,
+          ),
+        );
       } else {
         setPaymentAmount(
-          (editingRecord as BrokerageSale).amountReceived.toString()
+          (editingRecord as BrokerageSale).amountReceived.toString(),
         );
-        setDate((editingRecord as BrokerageSale).saleDate);
-        setDestinationType(
-          (editingRecord as BrokerageSale).destinationType || "external"
-        );
+        setDate(String((editingRecord as BrokerageSale).saleDate).slice(0, 10));
       }
     } else {
       // Reset form for create mode
       setPartyId("");
-      setDestinationType("external");
       setQuantity("");
       setRate("");
       setPaymentMethod("cash");
@@ -564,12 +596,22 @@ function TransactionDialog({
 
   const primaryPartyType =
     kind === "purchase" ? PartyType.FARM : PartyType.CUSTOMER;
-  const primaryPartiesQuery = useListPartiesQuery(
-    { type: primaryPartyType, limit: 100 },
+  const primaryPartiesQuery = useDepartmentParties(
+    DepartmentCode.BROKERAGE,
+    {
+      type: primaryPartyType,
+      search: partySearch.trim() || undefined,
+      limit: 100,
+    },
     { skip: !open },
   );
-  const brokerPartiesQuery = useListPartiesQuery(
-    { type: PartyType.BROKER, limit: 100 },
+  const brokerPartiesQuery = useDepartmentParties(
+    DepartmentCode.BROKERAGE,
+    {
+      type: PartyType.BROKER,
+      search: partySearch.trim() || undefined,
+      limit: 100,
+    },
     { skip: !open },
   );
   const parties = [
@@ -618,11 +660,7 @@ function TransactionDialog({
     }
     const effectivePayment =
       enteredPayment ?? (paymentMethod === "cash" ? total : 0);
-    if (
-      destinationType !== "supply" &&
-      effectivePayment < total &&
-      !partyId
-    ) {
+    if (effectivePayment < total && !partyId) {
       setFormError("Select a party when an outstanding balance remains.");
       return;
     }
@@ -645,7 +683,9 @@ function TransactionDialog({
   };
 
   const partyLabel =
-    kind === "purchase" ? "Seller (Farm or Broker)" : "Buyer (Customer or Broker)";
+    kind === "purchase"
+      ? "Seller (Farm or Broker)"
+      : "Buyer (Customer or Broker)";
 
   return (
     <Dialog
@@ -674,43 +714,15 @@ function TransactionDialog({
             </Alert>
           ) : null}
 
-          {kind === "sale" ? (
-            <div className="space-y-1.5">
-              <Label>Destination</Label>
-              <Select
-                value={destinationType}
-                onValueChange={(value) => {
-                  const next = value as "external" | "supply";
-                  setDestinationType(next);
-                  if (next === "supply") {
-                    setPartyId("");
-                    setPaymentMethod("credit");
-                    setPaymentAmount("");
-                  }
-                }}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="external">External buyer</SelectItem>
-                  <SelectItem value="supply">
-                    Supply department (automatic transfer)
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-              {destinationType === "supply" ? (
-                <p className="text-xs text-muted-foreground">
-                  Saving will automatically create the Supply purchase and
-                  move the same stock into Supply at this rate.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {destinationType !== "supply" ? (
+          {
             <div className="space-y-1.5">
               <Label htmlFor={`${kind}-party`}>{partyLabel}</Label>
+              <Input
+                aria-label="Search parties"
+                placeholder="Search parties…"
+                value={partySearch}
+                onChange={(e) => setPartySearch(e.target.value)}
+              />
               <Select
                 value={partyId || "none"}
                 onValueChange={(v) => setPartyId(v === "none" ? "" : v)}
@@ -722,15 +734,21 @@ function TransactionDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">— None —</SelectItem>
-                  {parties.map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name}
-                    </SelectItem>
-                  ))}
+                  {parties
+                    .filter((p) =>
+                      p.name
+                        .toLowerCase()
+                        .includes(partySearch.toLowerCase().trim()),
+                    )
+                    .map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>
-          ) : null}
+          }
 
           <div className="space-y-1.5">
             <Label htmlFor={`${kind}-quantity`}>

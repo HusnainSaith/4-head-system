@@ -16,6 +16,7 @@ import {
 
 export interface PaginatedResult<T> {
   items: T[];
+  summary: { totalAmount: string; settled: string; outstanding: string };
   pagination: {
     page: number;
     limit: number;
@@ -118,17 +119,24 @@ export class BrokerageRepository {
       params.vehicleId = query.vehicleId;
     }
     if (query.search) {
-      conditions.push('party.name ILIKE :search');
+      conditions.push('(party.name ILIKE :search OR vehicle.registration_number ILIKE :search OR bp.description ILIKE :search OR CAST(bp.purchase_date AS TEXT) ILIKE :search)');
       params.search = `%${query.search}%`;
     }
 
     const where = conditions.join(' AND ');
 
-    const total = await this.purchaseRepo
+    const aggregate = await this.purchaseRepo
       .createQueryBuilder('bp')
       .leftJoin('bp.party', 'party')
+      .leftJoin('bp.vehicle', 'vehicle')
+      .select('COUNT(*)', 'total')
+      .addSelect('COALESCE(SUM(bp.total_amount), 0)', 'totalAmount')
+      .addSelect('COALESCE(SUM(bp.amount_paid), 0)', 'settled')
+      .addSelect('COALESCE(SUM(bp.outstanding_amount), 0)', 'outstanding')
       .where(where, params)
-      .getCount();
+      .getRawOne();
+    const total = Number(aggregate?.total ?? 0);
+    const summary = {totalAmount: String(aggregate?.totalAmount ?? '0.00'), settled: String(aggregate?.settled ?? '0.00'), outstanding: String(aggregate?.outstanding ?? '0.00')};
 
     const items = await this.purchaseRepo
       .createQueryBuilder('bp')
@@ -136,6 +144,7 @@ export class BrokerageRepository {
       .leftJoinAndSelect('bp.vehicle', 'vehicle')
       .where(where, params)
       .orderBy('"bp"."purchase_date"', 'DESC')
+      .addOrderBy('bp.id', 'DESC')
       .offset(offset)
       .limit(limit)
       .getMany();
@@ -143,6 +152,7 @@ export class BrokerageRepository {
     const totalPages = Math.ceil(total / limit);
     return {
       items,
+      summary,
       pagination: {
         page,
         limit,
@@ -214,17 +224,24 @@ export class BrokerageRepository {
       params.vehicleId = query.vehicleId;
     }
     if (query.search) {
-      conditions.push('party.name ILIKE :search');
+      conditions.push('(party.name ILIKE :search OR vehicle.registration_number ILIKE :search OR bs.description ILIKE :search OR CAST(bs.sale_date AS TEXT) ILIKE :search)');
       params.search = `%${query.search}%`;
     }
 
     const where = conditions.join(' AND ');
 
-    const total = await this.saleRepo
+    const aggregate = await this.saleRepo
       .createQueryBuilder('bs')
       .leftJoin('bs.party', 'party')
+      .leftJoin('bs.vehicle', 'vehicle')
+      .select('COUNT(*)', 'total')
+      .addSelect('COALESCE(SUM(bs.total_amount), 0)', 'totalAmount')
+      .addSelect('COALESCE(SUM(bs.amount_received), 0)', 'settled')
+      .addSelect('COALESCE(SUM(bs.outstanding_amount), 0)', 'outstanding')
       .where(where, params)
-      .getCount();
+      .getRawOne();
+    const total = Number(aggregate?.total ?? 0);
+    const summary = {totalAmount: String(aggregate?.totalAmount ?? '0.00'), settled: String(aggregate?.settled ?? '0.00'), outstanding: String(aggregate?.outstanding ?? '0.00')};
 
     const items = await this.saleRepo
       .createQueryBuilder('bs')
@@ -232,6 +249,7 @@ export class BrokerageRepository {
       .leftJoinAndSelect('bs.vehicle', 'vehicle')
       .where(where, params)
       .orderBy('"bs"."sale_date"', 'DESC')
+      .addOrderBy('bs.id', 'DESC')
       .offset(offset)
       .limit(limit)
       .getMany();
@@ -239,6 +257,7 @@ export class BrokerageRepository {
     const totalPages = Math.ceil(total / limit);
     return {
       items,
+      summary,
       pagination: {
         page,
         limit,

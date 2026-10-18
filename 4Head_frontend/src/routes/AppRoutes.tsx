@@ -60,9 +60,11 @@ const PartyStatementPage = lazy(() =>
   })),
 );
 const PartySettlementPage = lazy(() =>
-  import("@/features/parties/components/PartySettlementPage").then((module) => ({
-    default: module.PartySettlementPage,
-  })),
+  import("@/features/parties/components/PartySettlementPage").then(
+    (module) => ({
+      default: module.PartySettlementPage,
+    }),
+  ),
 );
 const BrokeragePurchasesPage = lazy(() =>
   import("@/features/brokerage/components/BrokeragePurchasesPage").then(
@@ -97,11 +99,6 @@ const SupplySalesPage = lazy(() =>
 const SupplyStockPage = lazy(() =>
   import("@/features/supply/components/SupplyStockPage").then((m) => ({
     default: m.SupplyStockPage,
-  })),
-);
-const InternalTransfersPage = lazy(() =>
-  import("@/features/supply/components/InternalTransfersPage").then((m) => ({
-    default: m.InternalTransfersPage,
   })),
 );
 const SupplyReportPage = lazy(() =>
@@ -194,6 +191,7 @@ const SalaryRunDetailPage = lazy(() =>
     default: m.SalaryRunDetailPage,
   })),
 );
+const ExpenseCategoriesPage = lazy(() => import("@/features/expenses/components/ExpenseCategoriesPage").then(m => ({ default: m.ExpenseCategoriesPage })));
 const ExpensesPage = lazy(() =>
   import("@/features/expenses/components").then((m) => ({
     default: m.ExpensesPage,
@@ -234,6 +232,7 @@ const NotificationsListPage = lazy(() =>
     default: m.NotificationsListPage,
   })),
 );
+const DayBookPage = lazy(() => import('@/features/reports/components/DayBookPage').then(m=>({default:m.DayBookPage})));
 const ConsolidatedPnLPage = lazy(() =>
   import("@/features/reports/components").then((m) => ({
     default: m.ConsolidatedPnLPage,
@@ -264,9 +263,9 @@ const PayrollSummaryPage = lazy(() =>
     default: m.PayrollSummaryPage,
   })),
 );
-const ShopIncomingTransfersPage = lazy(() =>
-  import("@/features/fresh-chicken-shop/components/IncomingTransfersPage").then(
-    (m) => ({ default: m.IncomingTransfersPage }),
+const ShopPurchasesPage = lazy(() =>
+  import("@/features/fresh-chicken-shop/components/ShopPurchasesPage").then(
+    (m) => ({ default: m.ShopPurchasesPage }),
   ),
 );
 const ShopSalesPage = lazy(() =>
@@ -457,14 +456,6 @@ export function AppRoutes() {
             element={
               <SupplyAccess>
                 <SupplySalesPage />
-              </SupplyAccess>
-            }
-          />
-          <Route
-            path="supply/internal-transfers"
-            element={
-              <SupplyAccess>
-                <InternalTransfersPage />
               </SupplyAccess>
             }
           />
@@ -662,6 +653,7 @@ export function AppRoutes() {
               </RoleGuard>
             }
           />
+          <Route path="expenses/categories" element={<RoleGuard allowedRoles={managementRoles}><ExpenseCategoriesPage /></RoleGuard>} />
           <Route
             path="expenses"
             element={
@@ -710,6 +702,7 @@ export function AppRoutes() {
               </RoleGuard>
             }
           />
+          <Route path="reports/day-book" element={<RoleGuard allowedRoles={[Role.OWNER, Role.ACCOUNTANT]}><DayBookPage /></RoleGuard>} />
           <Route
             path="reports/consolidated-profit-loss"
             element={
@@ -760,13 +753,13 @@ export function AppRoutes() {
           />
           <Route
             path="shop"
-            element={<Navigate to="/shop/incoming-transfers" replace />}
+            element={<Navigate to="/shop/purchases" replace />}
           />
           <Route
-            path="shop/incoming-transfers"
+            path="shop/purchases"
             element={
               <ShopAccess>
-                <ShopIncomingTransfersPage />
+                <ShopPurchasesPage />
               </ShopAccess>
             }
           />
@@ -804,7 +797,7 @@ export function AppRoutes() {
           />
           <Route
             path="fresh-chicken-shop"
-            element={<Navigate to="/shop/incoming-transfers" replace />}
+            element={<Navigate to="/shop/purchases" replace />}
           />
           <Route
             path="users"

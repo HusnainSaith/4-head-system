@@ -40,6 +40,8 @@ describe("PartySettlementHistory", () => {
             settlementAmount: "250.00",
             settlementDate: "2026-07-01",
             status: "active",
+            reference: "UBL",
+            notes: "Transfer notes with details",
             createdAt: "2026-07-01T00:00:00Z",
             updatedAt: "2026-07-01T00:00:00Z",
           } as never,
@@ -50,6 +52,8 @@ describe("PartySettlementHistory", () => {
     expect(screen.getByText("Brokerage")).toBeInTheDocument();
     expect(screen.getByText("Farm")).toBeInTheDocument();
     expect(screen.getByText("Buyer")).toBeInTheDocument();
+    expect(screen.getByText("Transfer notes with details")).toBeInTheDocument();
+    expect(screen.getByText("UBL")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: /^delete$/i }));
     await user.type(screen.getByLabelText("Reason"), "Duplicate settlement");

@@ -21,6 +21,8 @@ import { DepartmentScopeGuard } from '../../common/guards/department-scope.guard
 import { BrokerageService } from './brokerage.service';
 import {
   CreateBrokeragePurchaseDto,
+  UpdateBrokeragePurchaseDto,
+  UpdateBrokerageSaleDto,
   CreateBrokerageSaleDto,
   ListBrokeragePurchasesQueryDto,
   ListBrokerageSalesQueryDto,
@@ -56,9 +58,10 @@ export class BrokerageController {
   @ApiOperation({ summary: 'Update brokerage purchase' })
   updatePurchase(
     @Param('id') id: string,
-    @Body() dto: Partial<CreateBrokeragePurchaseDto>,
+    @Body() dto: UpdateBrokeragePurchaseDto,
+    @Request() request,
   ) {
-    return this.brokerageService.updatePurchase(id, dto);
+    return this.brokerageService.updatePurchase(id, dto, request.user.id);
   }
 
   @Delete('purchases/:id')
@@ -89,9 +92,10 @@ export class BrokerageController {
   @ApiOperation({ summary: 'Update brokerage sale' })
   updateSale(
     @Param('id') id: string,
-    @Body() dto: Partial<CreateBrokerageSaleDto>,
+    @Body() dto: UpdateBrokerageSaleDto,
+    @Request() request,
   ) {
-    return this.brokerageService.updateSale(id, dto);
+    return this.brokerageService.updateSale(id, dto, request.user.id);
   }
 
   @Delete('sales/:id')
@@ -112,13 +116,25 @@ export class BrokerageController {
     return this.brokerageService.createStockWriteoff(dto, req.user.id);
   }
   @Get('stock/writeoffs')
-  listStockWriteoffs() { return this.brokerageService.listStockWriteoffs(); }
+  listStockWriteoffs() {
+    return this.brokerageService.listStockWriteoffs();
+  }
   @Get('stock/writeoffs/:id')
-  getStockWriteoff(@Param('id') id: string) { return this.brokerageService.getStockWriteoff(id); }
+  getStockWriteoff(@Param('id') id: string) {
+    return this.brokerageService.getStockWriteoff(id);
+  }
   @Patch('stock/writeoffs/:id')
-  updateStockWriteoff(@Param('id') id: string, @Body() dto: Partial<StockWriteoffDto>, @Request() req) { return this.brokerageService.updateStockWriteoff(id, dto, req.user.id); }
+  updateStockWriteoff(
+    @Param('id') id: string,
+    @Body() dto: Partial<StockWriteoffDto>,
+    @Request() req,
+  ) {
+    return this.brokerageService.updateStockWriteoff(id, dto, req.user.id);
+  }
   @Delete('stock/writeoffs/:id')
-  deleteStockWriteoff(@Param('id') id: string, @Request() req) { return this.brokerageService.deleteStockWriteoff(id, req.user.id); }
+  deleteStockWriteoff(@Param('id') id: string, @Request() req) {
+    return this.brokerageService.deleteStockWriteoff(id, req.user.id);
+  }
 
   @Get('reports/profit-loss')
   @ApiOperation({ summary: 'Get brokerage profit and loss report' })

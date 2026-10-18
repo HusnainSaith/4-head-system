@@ -15,6 +15,7 @@ let mainWindow;
 let isQuitting = false;
 let backendErrorTail = "";
 let pendingSnapshotState;
+let databaseErrorTail = "";
 
 function formatError(error) {
   if (error instanceof Error) return error.stack || error.message;
@@ -133,6 +134,11 @@ function waitForBackend(url, child) {
 }
 
 async function startLocalServices() {
+  const backendDir = path.join(process.resourcesPath, "backend");
+  const entry = path.join(backendDir, "dist", "src", "main.js");
+  if (!fs.existsSync(entry)) {
+    throw new Error(`Application files are missing: ${entry}. Reinstall the latest desktop version.`);
+  }
   log("[startup] Loading embedded PostgreSQL runtime");
   const EmbeddedPostgres = (await import("embedded-postgres")).default;
   databaseControlBinary = (await import("@embedded-postgres/windows-x64")).pg_ctl;
@@ -145,7 +151,6 @@ async function startLocalServices() {
     .digest("hex");
   const databaseDir = path.join(app.getPath("userData"), "postgres-data");
   databaseDirectory = databaseDir;
-  const backendDir = path.join(process.resourcesPath, "backend");
   pendingSnapshotState = prepareSnapshotUpgrade(databaseDir, backendDir);
   if (fs.existsSync(path.join(databaseDir, 'PG_VERSION'))) {
     const backupPath = path.join(app.getPath('userData'), 'database-backups', 'before-app-' + app.getVersion());
@@ -163,24 +168,28 @@ async function startLocalServices() {
     persistent: true,
     initdbFlags: ["--encoding=UTF8", "--locale=C"],
     postgresFlags: ["-h", "127.0.0.1"],
-    onLog: (message) => log(`[postgres] ${message}`),
+    onLog: (message) => {
+      databaseErrorTail = `${databaseErrorTail}${message}`.slice(-4000);
+      log(`[postgres] ${message}`);
+    },
     onError: (error) => log(`[postgres:error] ${String(error)}`),
   });
 
-  if (!fs.existsSync(path.join(databaseDir, "PG_VERSION"))) {
+  const isNewDatabase = !fs.existsSync(path.join(databaseDir, "PG_VERSION"));
+  if (isNewDatabase) {
     log("[startup] Initializing local database");
     await database.initialise();
   } else {
     log("[startup] Reusing existing local database");
   }
   log("[startup] Starting local database");
-  await database.start();
-  log("[startup] Local database started");
   try {
-    await database.createDatabase("4head_local");
+    await database.start();
   } catch (error) {
-    if (!String(error).toLowerCase().includes("already exists")) throw error;
+    throw new Error(databaseErrorTail.trim() || formatError(error) || "The local database could not start.");
   }
+  log("[startup] Local database started");
+  if (isNewDatabase) await database.createDatabase("4head_local");
 
   if (pendingSnapshotState) {
     const initialUploads = path.join(backendDir, "initial-uploads");
@@ -189,7 +198,6 @@ async function startLocalServices() {
     }
   }
 
-  const entry = path.join(backendDir, "dist", "src", "main.js");
   const jwtSecret = crypto
     .createHash("sha512")
     .update(`${databasePassword}:4head-jwt`)
@@ -215,7 +223,7 @@ async function startLocalServices() {
       DESKTOP_FRONTEND_DIR: path.join(process.resourcesPath, "frontend"),
       UPLOAD_DIR: path.join(app.getPath("userData"), "uploads"),
       DESKTOP_AUTO_MIGRATE: pendingSnapshotState ? "true" : "false",
-      DESKTOP_SCHEMA_UPGRADE: "true",
+      DESKTOP_SCHEMA_UPGRADE: "false",
       DESKTOP_AUTO_SEED: pendingSnapshotState ? "true" : "false",
       NOTIFICATION_ENABLED: "false",
       DISABLE_EMAIL_DELIVERY: "true",

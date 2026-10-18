@@ -36,7 +36,7 @@ describe("Sidebar", () => {
     expect(screen.getByText("Sales")).toBeInTheDocument();
     expect(screen.getByText("Stock")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Supply" }));
-    expect(screen.getByText("Internal Transfers")).toBeInTheDocument();
+    expect(screen.queryByText("Internal Transfers")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Vehicles" }));
     expect(screen.getByText("Fuel Logs")).toBeInTheDocument();
     expect(screen.getByText("Maintenance Logs")).toBeInTheDocument();
@@ -64,14 +64,7 @@ describe("Sidebar", () => {
   it("shows only Supply nested navigation to Supply staff", () => {
     renderSidebar(Role.DEPARTMENT_STAFF, DepartmentCode.SUPPLY);
     fireEvent.click(screen.getByRole("button", { name: "Supply" }));
-    for (const label of [
-      "Supply",
-      "Purchases",
-      "Sales",
-      "Internal Transfers",
-      "Stock",
-      "Reports",
-    ])
+    for (const label of ["Supply", "Purchases", "Sales", "Stock", "Reports"])
       expect(screen.getByText(label)).toBeInTheDocument();
     expect(screen.queryByText("Brokerage")).not.toBeInTheDocument();
     expect(screen.queryByText("Wastage")).not.toBeInTheDocument();

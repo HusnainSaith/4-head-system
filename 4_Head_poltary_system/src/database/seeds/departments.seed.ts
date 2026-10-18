@@ -45,19 +45,17 @@ export async function seedDepartments(dataSource: DataSource) {
   const savedDepartments = await departmentRepo.find();
 
   const cashAccountRepo = dataSource.getRepository(CashAccount);
-  for (const department of savedDepartments) {
-    const existing = await cashAccountRepo.findOneBy({
-      departmentId: department.id,
-    });
-    if (!existing)
-      await cashAccountRepo.save(
-        cashAccountRepo.create({
-          departmentId: department.id,
-          accountName: `${department.name} Cash Drawer`,
-          openingBalance: '0.00',
-          isActive: true,
-        }),
-      );
+  if (
+    !(await cashAccountRepo.findOneBy({ accountName: 'Admin Cash Drawer' }))
+  ) {
+    await cashAccountRepo.save(
+      cashAccountRepo.create({
+        accountName: 'Admin Cash Drawer',
+        isShared: true,
+        openingBalance: '0.00',
+        isActive: true,
+      }),
+    );
   }
 
   for (const department of savedDepartments) {

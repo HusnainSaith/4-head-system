@@ -1,2 +1,96 @@
-import{apiSlice}from"@/store/apiSlice";import type{ApiResponse}from"@/types/api";import type{CreateExpenseRequest,Expense,ExpenseCategory}from"./types";
-export const expensesApi=apiSlice.injectEndpoints({endpoints:(b)=>({listExpenses:b.query<ApiResponse<Expense[]>,{departmentId?:string}|void>({query:(p)=>({url:"/expenses",params:p||undefined}),providesTags:(r)=>[{type:"Expense",id:"LIST"},...(r?.data.map(({id})=>({type:"Expense"as const,id}))??[])]}),createExpense:b.mutation<ApiResponse<Expense>,CreateExpenseRequest>({query:(body)=>({url:"/expenses",method:"POST",body}),invalidatesTags:[{type:"Expense",id:"LIST"}]}),updateExpense:b.mutation<ApiResponse<Expense>,{id:string;body:CreateExpenseRequest}>({query:({id,body})=>({url:`/expenses/${id}`,method:"PATCH",body}),invalidatesTags:[{type:"Expense",id:"LIST"},{type:"ConsolidatedReport",id:"PROFIT_LOSS"}]}),listExpenseCategories:b.query<ApiResponse<ExpenseCategory[]>,void>({query:()=>"/expenses/categories/list",providesTags:[{type:"Expense",id:"CATEGORIES"}]}),createExpenseCategory:b.mutation<ApiResponse<ExpenseCategory>,{name:string;description?:string}>({query:(body)=>({url:"/expenses/categories",method:"POST",body}),invalidatesTags:[{type:"Expense",id:"CATEGORIES"}]}),updateExpenseCategory:b.mutation<ApiResponse<ExpenseCategory>,{id:string;body:{name?:string;description?:string;isActive?:boolean}}>({query:({id,body})=>({url:`/expenses/categories/${id}`,method:"PATCH",body}),invalidatesTags:[{type:"Expense",id:"CATEGORIES"}]})})});export const{useListExpensesQuery,useCreateExpenseMutation,useUpdateExpenseMutation,useListExpenseCategoriesQuery,useCreateExpenseCategoryMutation,useUpdateExpenseCategoryMutation}=expensesApi;
+import { apiSlice } from "@/store/apiSlice";
+import type { ApiResponse } from "@/types/api";
+import type { CreateExpenseRequest, Expense, ExpenseCategory } from "./types";
+export const expensesApi = apiSlice.injectEndpoints({
+  endpoints: (b) => ({
+    listExpenses: b.query<
+      ApiResponse<Expense[]>,
+      { departmentId?: string } | void
+    >({
+      query: (p) => ({ url: "/expenses", params: p || undefined }),
+      providesTags: (r) => [
+        { type: "Expense", id: "LIST" },
+        ...(r?.data.map(({ id }) => ({ type: "Expense" as const, id })) ?? []),
+      ],
+    }),
+    createExpense: b.mutation<ApiResponse<Expense>, CreateExpenseRequest>({
+      query: (body) => ({ url: "/expenses", method: "POST", body }),
+      invalidatesTags: [
+        { type: "Expense", id: "LIST" },
+        { type: "Account", id: "CASH" },
+        { type: "Account", id: "BANK" },
+        { type: "Account", id: "SUMMARY" },
+        { type: "ConsolidatedReport", id: "PROFIT_LOSS" },
+      ],
+    }),
+    updateExpense: b.mutation<
+      ApiResponse<Expense>,
+      { id: string; body: CreateExpenseRequest }
+    >({
+      query: ({ id, body }) => ({
+        url: `/expenses/${id}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: [
+        { type: "Account", id: "CASH" },
+        { type: "Account", id: "BANK" },
+        { type: "Account", id: "SUMMARY" },
+        { type: "Expense", id: "LIST" },
+        { type: "ConsolidatedReport", id: "PROFIT_LOSS" },
+      ],
+    }),
+    listExpenseCategories: b.query<ApiResponse<ExpenseCategory[]>, void>({
+      query: () => "/expenses/categories/list",
+      providesTags: [{ type: "Expense", id: "CATEGORIES" }],
+    }),
+    createExpenseCategory: b.mutation<
+      ApiResponse<ExpenseCategory>,
+      { name: string; description?: string; categoryType?: string }
+    >({
+      query: (body) => ({ url: "/expenses/categories", method: "POST", body }),
+      invalidatesTags: [
+        { type: "Expense", id: "CATEGORIES" },
+        { type: "Expense", id: "LIST" },
+      ],
+    }),
+    deleteExpenseCategory: b.mutation<ApiResponse<null>, string>({
+      query: (id) => ({ url: `/expenses/categories/${id}`, method: "DELETE" }),
+      invalidatesTags: [
+        { type: "Expense", id: "CATEGORIES" },
+        { type: "Expense", id: "LIST" },
+      ],
+    }),
+    updateExpenseCategory: b.mutation<
+      ApiResponse<ExpenseCategory>,
+      {
+        id: string;
+        body: {
+          name?: string;
+          description?: string;
+          isActive?: boolean;
+          categoryType?: string;
+        };
+      }
+    >({
+      query: ({ id, body }) => ({
+        url: `/expenses/categories/${id}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: [
+        { type: "Expense", id: "CATEGORIES" },
+        { type: "Expense", id: "LIST" },
+      ],
+    }),
+  }),
+});
+export const {
+  useListExpensesQuery,
+  useCreateExpenseMutation,
+  useUpdateExpenseMutation,
+  useListExpenseCategoriesQuery,
+  useCreateExpenseCategoryMutation,
+  useUpdateExpenseCategoryMutation,
+  useDeleteExpenseCategoryMutation,
+} = expensesApi;

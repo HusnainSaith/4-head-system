@@ -53,11 +53,6 @@ describe("shopApi contracts", () => {
     store.dispatch(api.util.resetApiState());
   });
 
-  it("reads incoming transfers from /shop/incoming-transfers", async () => {
-    await dispatch(api.endpoints.getShopIncomingTransfers.initiate());
-    expect(requests[0]).toMatchObject({ url: "/shop/incoming-transfers" });
-  });
-
   it("lists and creates sales with correct routes", async () => {
     await dispatch(api.endpoints.listShopSales.initiate());
     expect(requests[0].url).toBe("/shop/sales");

@@ -2,6 +2,7 @@ import {
   IsUUID,
   IsNumber,
   IsEnum,
+  IsIn,
   IsDateString,
   IsOptional,
   IsString,
@@ -50,10 +51,10 @@ export class ListBrokeragePurchasesQueryDto {
   @IsDateString()
   to?: string;
 
-  @ApiPropertyOptional({ enum: ['cash', 'credit'] })
+  @ApiPropertyOptional({ enum: ['cash', 'bank', 'credit'] })
   @IsOptional()
-  @IsEnum(['cash', 'credit'])
-  paymentMethod?: 'cash' | 'credit';
+  @IsEnum(['cash', 'bank', 'credit'])
+  paymentMethod?: 'cash' | 'bank' | 'credit';
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -102,10 +103,10 @@ export class ListBrokerageSalesQueryDto {
   @IsDateString()
   to?: string;
 
-  @ApiPropertyOptional({ enum: ['cash', 'credit'] })
+  @ApiPropertyOptional({ enum: ['cash', 'bank', 'credit'] })
   @IsOptional()
-  @IsEnum(['cash', 'credit'])
-  paymentMethod?: 'cash' | 'credit';
+  @IsEnum(['cash', 'bank', 'credit'])
+  paymentMethod?: 'cash' | 'bank' | 'credit';
 
   @ApiPropertyOptional()
   @IsOptional()
@@ -207,7 +208,7 @@ export class CreateBrokeragePurchaseDto extends PaymentAccountSelectionDto {
   description?: string;
 }
 
-export class UpdateBrokeragePurchaseDto {
+export class UpdateBrokeragePurchaseDto extends PaymentAccountSelectionDto {
   @IsUUID()
   @IsOptional()
   partyId?: string;
@@ -231,9 +232,9 @@ export class UpdateBrokeragePurchaseDto {
   @IsOptional()
   amountPaid?: number;
 
-  @IsEnum(['cash', 'credit'])
+  @IsEnum(['cash', 'bank', 'credit'])
   @IsOptional()
-  paymentMethod?: 'cash' | 'credit';
+  paymentMethod?: 'cash' | 'bank' | 'credit';
 
   @IsDateString()
   @IsOptional()
@@ -245,7 +246,7 @@ export class UpdateBrokeragePurchaseDto {
 }
 
 export class CreateBrokerageSaleDto extends PaymentAccountSelectionDto {
-  @IsEnum(BrokerageSaleDestination)
+  @IsIn([BrokerageSaleDestination.EXTERNAL])
   @IsOptional()
   destinationType?: BrokerageSaleDestination;
 
@@ -281,7 +282,7 @@ export class CreateBrokerageSaleDto extends PaymentAccountSelectionDto {
   description?: string;
 }
 
-export class UpdateBrokerageSaleDto {
+export class UpdateBrokerageSaleDto extends PaymentAccountSelectionDto {
   @IsUUID()
   @IsOptional()
   partyId?: string;
@@ -305,9 +306,9 @@ export class UpdateBrokerageSaleDto {
   @IsOptional()
   amountReceived?: number;
 
-  @IsEnum(['cash', 'credit'])
+  @IsEnum(['cash', 'bank', 'credit'])
   @IsOptional()
-  paymentMethod?: 'cash' | 'credit';
+  paymentMethod?: 'cash' | 'bank' | 'credit';
 
   @IsDateString()
   @IsOptional()

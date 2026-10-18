@@ -76,8 +76,7 @@ export function SupplyStockPage() {
         />
       </div>
       <p className="text-sm text-muted-foreground">
-        This stock reflects purchases, external sales, internal transfers sent
-        to the Fresh Chicken Shop, and manual shrinkage.
+        This stock reflects purchases and external sales, and manual shrinkage.
       </p>
       <section className="space-y-3">
         <h2 className="text-lg font-semibold">Shrinkage records</h2>
@@ -87,23 +86,101 @@ export function SupplyStockPage() {
           isLoading={writeoffs.isLoading}
           isError={writeoffs.isError}
           onRetry={() => void writeoffs.refetch()}
-          columns={[
-            { id: "date", header: "Date", cell: (row) => row.writeoffDate.slice(0, 10) },
-            { id: "quantity", header: "Weight", cell: (row) => `${row.quantityKg} kg`, align: "right" },
-            { id: "rate", header: "Sale rate/kg", cell: (row) => money.format(Number(row.ratePerKg)), align: "right" },
-            { id: "reason", header: "Reason", cell: (row) => row.reason.replaceAll("_", " ") },
-            { id: "value", header: "Value", cell: (row) => money.format(Number(row.valuationAmount)), align: "right" },
-            { id: "note", header: "Note", cell: (row) => row.note || "—" },
-            { id: "actions", header: "Actions", cell: (row) => canWrite ? <div className="flex gap-2"><Button variant="outline" size="sm" onClick={() => { setEditing(row); setOpen(true); }}>Edit</Button><Button variant="destructive" size="sm" onClick={async () => { if (!window.confirm("Delete this shrinkage record and restore its stock?")) return; try { await deleteWriteoff(row.id).unwrap(); toast.success("Shrinkage record deleted"); } catch (error) { toast.error(getApiErrorMessage(error)); } }}>Delete</Button></div> : null },
-          ] satisfies DataTableColumn<StockWriteoff>[]}
+          columns={
+            [
+              {
+                id: "date",
+                header: "Date",
+                cell: (row) => row.writeoffDate.slice(0, 10),
+              },
+              {
+                id: "quantity",
+                header: "Weight",
+                cell: (row) => `${row.quantityKg} kg`,
+                align: "right",
+              },
+              {
+                id: "rate",
+                header: "Sale rate/kg",
+                cell: (row) => money.format(Number(row.ratePerKg)),
+                align: "right",
+              },
+              {
+                id: "reason",
+                header: "Reason",
+                cell: (row) => row.reason.replaceAll("_", " "),
+              },
+              {
+                id: "value",
+                header: "Value",
+                cell: (row) => money.format(Number(row.valuationAmount)),
+                align: "right",
+              },
+              { id: "note", header: "Note", cell: (row) => row.note || "—" },
+              {
+                id: "actions",
+                header: "Actions",
+                cell: (row) =>
+                  canWrite ? (
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setEditing(row);
+                          setOpen(true);
+                        }}
+                      >
+                        Edit
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={async () => {
+                          if (
+                            !window.confirm(
+                              "Delete this shrinkage record and restore its stock?",
+                            )
+                          )
+                            return;
+                          try {
+                            await deleteWriteoff(row.id).unwrap();
+                            toast.success("Shrinkage record deleted");
+                          } catch (error) {
+                            toast.error(getApiErrorMessage(error));
+                          }
+                        }}
+                      >
+                        Delete
+                      </Button>
+                    </div>
+                  ) : null,
+              },
+            ] satisfies DataTableColumn<StockWriteoff>[]
+          }
         />
       </section>
       <StockWriteoffDialog
         open={open}
-        availableKg={(Number(stock.quantityKg) + Number(editing?.quantityKg ?? 0)).toFixed(3)}
+        availableKg={(
+          Number(stock.quantityKg) + Number(editing?.quantityKg ?? 0)
+        ).toFixed(3)}
         loading={writeoffState.isLoading || updateState.isLoading}
-        initialValue={editing ? { quantityKg: Number(editing.quantityKg), ratePerKg: Number(editing.ratePerKg), reason: editing.reason, note: editing.note, writeoffDate: editing.writeoffDate } : undefined}
-        onClose={() => { setOpen(false); setEditing(null); }}
+        initialValue={
+          editing
+            ? {
+                quantityKg: Number(editing.quantityKg),
+                ratePerKg: Number(editing.ratePerKg),
+                reason: editing.reason,
+                note: editing.note,
+                writeoffDate: editing.writeoffDate,
+              }
+            : undefined
+        }
+        onClose={() => {
+          setOpen(false);
+          setEditing(null);
+        }}
         onSubmit={async (body) => {
           try {
             const result = editing

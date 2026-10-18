@@ -252,7 +252,9 @@ export class EmployeesService {
     const [account] = await manager.query(
       'SELECT opening_balance FROM ' +
         table +
-        ' WHERE id = $1 AND is_active = true AND deleted_at IS NULL FOR UPDATE',
+        ' WHERE id = $1 AND is_active = true AND deleted_at IS NULL' +
+        (method === 'cash' ? " AND is_shared = true AND account_name = 'Admin Cash Drawer'" : '') +
+        ' FOR UPDATE',
       [id],
     );
     if (!account)
@@ -499,7 +501,9 @@ export class EmployeesService {
           const common = {
             departmentId: employee.departmentId,
             amount: centsToMoney(delta > 0n ? delta : -delta),
-            entryDate: new Date(),
+            entryDate: new Date(
+              Date.UTC(run.periodYear, run.periodMonth - 1, 1),
+            ),
             sourceType: 'salary',
             sourceId: run.id,
             description: 'Bonus correction',

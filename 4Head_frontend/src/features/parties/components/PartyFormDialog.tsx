@@ -454,7 +454,7 @@ export function PartyFormDialog({
                   Adjust Current Balance
                 </h3>
                 <p className="mb-3 text-sm text-blue-800">
-                  Current balance: <strong>{party?.currentBalance}</strong>
+                  Current balance: <strong>{formatPartyBalance(party?.currentBalance ?? 0)} {partyBalanceLabel(party?.currentBalance ?? 0)}</strong>
                 </p>
                 <div className="grid gap-3 sm:grid-cols-3">
                   <Select
@@ -546,3 +546,4 @@ function DepartmentField({
     </FormField>
   );
 }
+import { formatPartyBalance, partyBalanceLabel } from '../party-balance';

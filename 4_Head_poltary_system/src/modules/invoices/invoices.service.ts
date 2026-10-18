@@ -13,6 +13,7 @@ import { PdfService } from './pdf.service';
 import { BrokeragePurchase } from '../brokerage/entities/brokerage-purchase.entity';
 import { BrokerageSale } from '../brokerage/entities/brokerage-sale.entity';
 import { SupplyPurchase } from '../supply/entities/supply-purchase.entity';
+import { ShopPurchase } from '../fresh-chicken-shop/entities/shop-purchase.entity';
 import { SupplySale } from '../supply/entities/supply-sale.entity';
 import { InternalTransfer } from '../supply/entities/internal-transfer.entity';
 import { WastagePurchase } from '../wastage/entities/wastage-purchase.entity';
@@ -20,7 +21,8 @@ import { WastageSale } from '../wastage/entities/wastage-sale.entity';
 import { ShopSale } from '../fresh-chicken-shop/entities/shop-sale.entity';
 import { Expense } from '../expenses/entities/expense.entity';
 
-type InvoicePurchase = BrokeragePurchase | SupplyPurchase | WastagePurchase;
+type InvoicePurchase =
+  BrokeragePurchase | SupplyPurchase | WastagePurchase | ShopPurchase;
 type InvoiceSale = BrokerageSale | SupplySale | WastageSale | ShopSale;
 
 @Injectable()
@@ -225,6 +227,7 @@ export class InvoicesService {
       BrokeragePurchase,
       SupplyPurchase,
       WastagePurchase,
+      ShopPurchase,
     ] as const) {
       const transaction = await this.dataSource.getRepository(entity).findOne({
         where: { id, deletedAt: IsNull() } as any,

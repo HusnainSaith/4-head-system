@@ -98,7 +98,7 @@ export function PartySettlementPage() {
           />
           <SummaryCard
             title="Total Receivable"
-            value={Number(balanceData?.totalReceivable ?? 0)}
+            value={-Number(balanceData?.totalReceivable ?? 0)}
             detail={`${balanceData?.parties.filter((party) => Number(party.balance) < 0).length ?? 0} parties`}
           />
           <SummaryCard

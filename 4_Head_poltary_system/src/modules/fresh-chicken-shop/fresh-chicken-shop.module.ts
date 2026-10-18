@@ -4,6 +4,7 @@ import { FreshChickenShopController } from './fresh-chicken-shop.controller';
 import { FreshChickenShopService } from './fresh-chicken-shop.service';
 import { FreshChickenShopRepository } from './fresh-chicken-shop.repository';
 import { ShopSale } from './entities/shop-sale.entity';
+import { ShopPurchase } from './entities/shop-purchase.entity';
 import { InternalTransfer } from '../supply/entities/internal-transfer.entity';
 import { InventoryModule } from '../inventory/inventory.module';
 import { LedgerModule } from '../ledger/ledger.module';
@@ -14,7 +15,12 @@ import { ShopDressingBatch } from './entities/shop-dressing-batch.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ShopSale, ShopDressingBatch, InternalTransfer]),
+    TypeOrmModule.forFeature([
+      ShopSale,
+      ShopPurchase,
+      ShopDressingBatch,
+      InternalTransfer,
+    ]),
     InventoryModule,
     LedgerModule,
     DepartmentsModule,

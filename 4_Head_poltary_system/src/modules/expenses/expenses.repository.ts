@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, DeepPartial } from 'typeorm';
+import { Repository, DeepPartial, EntityManager } from 'typeorm';
 import { Expense } from './entities/expense.entity';
 import { ExpenseCategory } from './entities/expense-category.entity';
 import { IExpensesRepository } from './interfaces/expenses-repository.interface';
@@ -14,12 +14,23 @@ export class ExpensesRepository implements IExpensesRepository {
     private readonly categoryRepo: Repository<ExpenseCategory>,
   ) {}
 
-  createExpense(dto: DeepPartial<Expense>): Expense {
-    return this.expenseRepo.create(dto) as Expense;
+  transaction<T>(work: (manager: EntityManager) => Promise<T>): Promise<T> {
+    return this.expenseRepo.manager.transaction(work);
   }
 
-  async saveExpense(expense: Expense): Promise<Expense> {
-    return this.expenseRepo.save(expense);
+  createExpense(dto: DeepPartial<Expense>, manager?: EntityManager): Expense {
+    return (manager ? manager.getRepository(Expense) : this.expenseRepo).create(
+      dto,
+    ) as Expense;
+  }
+
+  async saveExpense(
+    expense: Expense,
+    manager?: EntityManager,
+  ): Promise<Expense> {
+    return (manager ? manager.getRepository(Expense) : this.expenseRepo).save(
+      expense,
+    );
   }
 
   async findAll(departmentId?: string): Promise<Expense[]> {
@@ -32,8 +43,13 @@ export class ExpensesRepository implements IExpensesRepository {
     });
   }
 
-  async findOne(id: string): Promise<Expense | null> {
-    return this.expenseRepo.findOne({ where: { id, deletedAt: null } as any });
+  async findOne(id: string, manager?: EntityManager): Promise<Expense | null> {
+    return (
+      manager ? manager.getRepository(Expense) : this.expenseRepo
+    ).findOne({
+      where: { id },
+      ...(manager ? { lock: { mode: 'pessimistic_write' as const } } : {}),
+    });
   }
 
   async sumTotal(
@@ -67,5 +83,21 @@ export class ExpensesRepository implements IExpensesRepository {
   }
   saveCategory(category: ExpenseCategory): Promise<ExpenseCategory> {
     return this.categoryRepo.save(category);
+  }
+
+  findCategoryWithName(name: string) {
+    return this.categoryRepo
+      .createQueryBuilder('category')
+      .withDeleted()
+      .where('LOWER(category.name) = LOWER(:name)', { name })
+      .getOne();
+  }
+
+  countCategoryExpenses(categoryId: string) {
+    return this.expenseRepo.count({ where: { categoryId }, withDeleted: true });
+  }
+
+  deleteCategory(id: string) {
+    return this.categoryRepo.softDelete(id);
   }
 }

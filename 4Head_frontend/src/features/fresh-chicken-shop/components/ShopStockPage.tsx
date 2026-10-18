@@ -78,11 +78,32 @@ export function ShopStockPage() {
         />
       </div>
       <p className="text-sm text-muted-foreground mt-2">
-        This stock is fed exclusively by internal transfers from Supply. The
-        Fresh Chicken Shop has no purchase-creation screen — see{" "}
-        <strong>Incoming Transfers</strong> for the source records.
+        Live stock comes from external purchases. Dressing batches convert it
+        into dressed stock ready for sale.
       </p>
-      <ShrinkageRecords records={records.data?.data ?? []} loading={records.isLoading} error={records.isError} retry={() => void records.refetch()} canWrite={canWrite} availableKg={live.quantityKg} stockOptions={[{ value: "live", label: "Live stock", availableKg: live.quantityKg }, { value: "dressed", label: "Dressed stock", availableKg: dressed.quantityKg }]} onUpdate={(id, body) => updateWriteoff({ id, body: { ...body, stockType: body.stockType! } }).unwrap()} onDelete={(id) => deleteWriteoff(id).unwrap()} />
+      <ShrinkageRecords
+        records={records.data?.data ?? []}
+        loading={records.isLoading}
+        error={records.isError}
+        retry={() => void records.refetch()}
+        canWrite={canWrite}
+        availableKg={live.quantityKg}
+        stockOptions={[
+          { value: "live", label: "Live stock", availableKg: live.quantityKg },
+          {
+            value: "dressed",
+            label: "Dressed stock",
+            availableKg: dressed.quantityKg,
+          },
+        ]}
+        onUpdate={(id, body) =>
+          updateWriteoff({
+            id,
+            body: { ...body, stockType: body.stockType! },
+          }).unwrap()
+        }
+        onDelete={(id) => deleteWriteoff(id).unwrap()}
+      />
       <StockWriteoffDialog
         open={open}
         availableKg={live.quantityKg}

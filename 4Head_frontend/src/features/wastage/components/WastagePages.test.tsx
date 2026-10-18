@@ -1,10 +1,22 @@
+vi.mock("@/features/departments/departmentsApi", () => ({
+  useListDepartmentsQuery: () => ({
+    data: {
+      data: [
+        { id: "brokerage-dept", type: "BROKERAGE" },
+        { id: "d1", type: "WASTAGE" },
+      ],
+    },
+  }),
+}));
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Role, DepartmentCode } from "@/types/enums";
 import { WastagePurchasesPage } from "./WastagePurchasesPage";
 import { WastageReportPage } from "./WastageReportPage";
 import { WastageSalesPage } from "./WastageSalesPage";
 import { WastageStockPage } from "./WastageStockPage";
-vi.mock("@/features/accounts/components", () => ({ PaymentAccountFields: () => null }));
+vi.mock("@/features/accounts/components", () => ({
+  PaymentAccountFields: () => null,
+}));
 
 vi.mock("@/features/parties/components/DepartmentBalancesPanel", () => ({
   DepartmentBalancesPanel: () => null,
@@ -34,7 +46,7 @@ vi.mock("sonner", () => ({
   },
 }));
 vi.mock("@/features/parties/partiesApi", () => ({
-  useListPartiesQuery: () => ({ data: { data: { items: [] } } }),
+  useListPartiesQuery: () => ({ currentData: { data: { items: [] } } }),
 }));
 vi.mock("@/features/vehicles/vehiclesApi", () => ({
   useListDepartmentsQuery: () => ({
@@ -44,7 +56,24 @@ vi.mock("@/features/vehicles/vehiclesApi", () => ({
 }));
 vi.mock("../wastageApi", () => ({
   useListPurchasesQuery: () => ({
-    data: { data: [{ id: "saved", quantityKg: "5", ratePerKg: "20", totalAmount: "100", amountPaid: "100", amountReceived: "100", outstandingAmount: "0", commissionPerKg: "0", paymentMethod: "cash", purchaseDate: "2026-09-29", saleDate: "2026-09-29", notes: "Saved wastage note" }] },
+    data: {
+      data: [
+        {
+          id: "saved",
+          quantityKg: "5",
+          ratePerKg: "20",
+          totalAmount: "100",
+          amountPaid: "100",
+          amountReceived: "100",
+          outstandingAmount: "0",
+          commissionPerKg: "0",
+          paymentMethod: "cash",
+          purchaseDate: "2026-09-29",
+          saleDate: "2026-09-29",
+          notes: "Saved wastage note",
+        },
+      ],
+    },
     isLoading: false,
     isError: false,
   }),
@@ -52,7 +81,24 @@ vi.mock("../wastageApi", () => ({
   useUpdatePurchaseMutation: () => [vi.fn(), { isLoading: false }],
   useDeletePurchaseMutation: () => [vi.fn(), { isLoading: false }],
   useListSalesQuery: () => ({
-    data: { data: [{ id: "saved", quantityKg: "5", ratePerKg: "20", totalAmount: "100", amountPaid: "100", amountReceived: "100", outstandingAmount: "0", commissionPerKg: "0", paymentMethod: "cash", purchaseDate: "2026-09-29", saleDate: "2026-09-29", notes: "Saved wastage note" }] },
+    data: {
+      data: [
+        {
+          id: "saved",
+          quantityKg: "5",
+          ratePerKg: "20",
+          totalAmount: "100",
+          amountPaid: "100",
+          amountReceived: "100",
+          outstandingAmount: "0",
+          commissionPerKg: "0",
+          paymentMethod: "cash",
+          purchaseDate: "2026-09-29",
+          saleDate: "2026-09-29",
+          notes: "Saved wastage note",
+        },
+      ],
+    },
     isLoading: false,
     isError: false,
   }),
@@ -62,7 +108,12 @@ vi.mock("../wastageApi", () => ({
     isError: false,
   }),
   useCreateWastageStockWriteoffMutation: () => [vi.fn(), { isLoading: false }],
-  useListWastageStockWriteoffsQuery: () => ({ data: { data: [] }, isLoading: false, isError: false, refetch: vi.fn() }),
+  useListWastageStockWriteoffsQuery: () => ({
+    data: { data: [] },
+    isLoading: false,
+    isError: false,
+    refetch: vi.fn(),
+  }),
   useUpdateWastageStockWriteoffMutation: () => [vi.fn(), { isLoading: false }],
   useDeleteWastageStockWriteoffMutation: () => [vi.fn(), { isLoading: false }],
   useCreateSaleMutation: () => [createSale, { isLoading: false }],
@@ -151,4 +202,6 @@ describe("Wastage pages", () => {
   });
 });
 
-vi.mock("@/features/invoices/components/InvoiceButton", () => ({ InvoiceButton: () => <button>Print</button> }));
+vi.mock("@/features/invoices/components/InvoiceButton", () => ({
+  InvoiceButton: () => <button>Print</button>,
+}));

@@ -1,3 +1,4 @@
+import { UpdateShopPurchaseDto } from './dto/update-shop-purchase.dto';
 import {
   Controller,
   Get,
@@ -16,6 +17,10 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DepartmentScopeGuard } from '../../common/guards/department-scope.guard';
 import { FreshChickenShopService } from './fresh-chicken-shop.service';
 import { CreateShopSaleDto } from './dto/shop.dto';
+import {
+  CreateSupplyPurchaseDto,
+  SupplyListQueryDto,
+} from '../supply/dto/supply.dto';
 import { StockWriteoffDto } from '../inventory/dto/stock-writeoff.dto';
 import {
   CreateDressingBatchDto,
@@ -30,9 +35,24 @@ import { StockType } from '../inventory/enums/stock-type.enum';
 export class FreshChickenShopController {
   constructor(private readonly shopService: FreshChickenShopService) {}
 
-  @Get('incoming-transfers')
-  getIncomingTransfers() {
-    return this.shopService.getIncomingTransfers();
+  @Get('purchases')
+  findPurchases(@Query() query: SupplyListQueryDto) {
+    return this.shopService.findPurchases(query);
+  }
+
+  @Post('purchases')
+  createPurchase(@Body() dto: CreateSupplyPurchaseDto, @Req() req: Request) {
+    return this.shopService.createPurchase(dto, (req as any).user.id);
+  }
+
+  @Patch('purchases/:id')
+  updatePurchase(@Param('id') id: string, @Body() dto: UpdateShopPurchaseDto, @Req() req: Request) {
+    return this.shopService.updatePurchase(id, dto, (req as any).user.id);
+  }
+
+  @Delete('purchases/:id')
+  deletePurchase(@Param('id') id: string, @Req() req: Request) {
+    return this.shopService.deletePurchase(id, (req as any).user.id);
   }
 
   @Post('sales')
@@ -107,13 +127,25 @@ export class FreshChickenShopController {
     return this.shopService.createStockWriteoff(dto, (req as any).user.id);
   }
   @Get('stock/writeoffs')
-  listStockWriteoffs() { return this.shopService.listStockWriteoffs(); }
+  listStockWriteoffs() {
+    return this.shopService.listStockWriteoffs();
+  }
   @Get('stock/writeoffs/:id')
-  getStockWriteoff(@Param('id') id: string) { return this.shopService.getStockWriteoff(id); }
+  getStockWriteoff(@Param('id') id: string) {
+    return this.shopService.getStockWriteoff(id);
+  }
   @Patch('stock/writeoffs/:id')
-  updateStockWriteoff(@Param('id') id: string, @Body() dto: Partial<StockWriteoffDto>, @Req() req: Request) { return this.shopService.updateStockWriteoff(id, dto, (req as any).user.id); }
+  updateStockWriteoff(
+    @Param('id') id: string,
+    @Body() dto: Partial<StockWriteoffDto>,
+    @Req() req: Request,
+  ) {
+    return this.shopService.updateStockWriteoff(id, dto, (req as any).user.id);
+  }
   @Delete('stock/writeoffs/:id')
-  deleteStockWriteoff(@Param('id') id: string, @Req() req: Request) { return this.shopService.deleteStockWriteoff(id, (req as any).user.id); }
+  deleteStockWriteoff(@Param('id') id: string, @Req() req: Request) {
+    return this.shopService.deleteStockWriteoff(id, (req as any).user.id);
+  }
 
   @Get('reports/profit-loss')
   @ApiQuery({ name: 'from', required: false })

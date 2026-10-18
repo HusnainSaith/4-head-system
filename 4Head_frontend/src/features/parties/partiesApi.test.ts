@@ -33,7 +33,7 @@ vi.mock("@/store/apiSlice", async () => {
         }
         return { data: { success: true, data: [] } };
       },
-      tagTypes: ["Party", "PartyStatement", "DepartmentBalance"] as const,
+      tagTypes: ["Party", "PartyStatement", "DepartmentBalance", "ConsolidatedReport"] as const,
       endpoints: () => ({}),
     }),
   };
@@ -59,6 +59,18 @@ describe("partiesApi — query builders", () => {
 
   beforeEach(() => {
     captured.length = 0;
+  });
+
+  it('refreshes the statement and department totals after a signed balance adjustment', async () => {
+    await dispatch(partiesApi.endpoints.getPartyStatement.initiate({id: 'adjust-cache-party'}));
+    await dispatch(partiesApi.endpoints.getDepartmentBalances.initiate('fresh-chicken-shop'));
+    const statementBefore = captured.filter(request => request.url === '/parties/adjust-cache-party/statement').length;
+    const departmentBefore = captured.filter(request => request.url === '/departments/fresh-chicken-shop/party-balances').length;
+    await dispatch(partiesApi.endpoints.adjustPartyBalance.initiate({id: 'adjust-cache-party', body: {departmentId: 'dept', amount: -100}}));
+    await vi.waitFor(() => {
+      expect(captured.filter(request => request.url === '/parties/adjust-cache-party/statement').length).toBeGreaterThan(statementBefore);
+      expect(captured.filter(request => request.url === '/departments/fresh-chicken-shop/party-balances').length).toBeGreaterThan(departmentBefore);
+    });
   });
 
   describe("listParties", () => {

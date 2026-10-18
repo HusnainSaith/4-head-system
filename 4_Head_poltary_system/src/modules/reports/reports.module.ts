@@ -1,3 +1,5 @@
+import { DayBookController } from './day-book.controller';
+import { DayBookService } from './day-book.service';
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ReportsController } from './reports.controller';
@@ -33,8 +35,8 @@ import { DepartmentPartnerShare } from './entities/department-partner-share.enti
       DepartmentPartnerShare,
     ]),
   ],
-  controllers: [ReportsController],
-  providers: [ReportsService, ReportsRepository],
+  controllers: [ReportsController, DayBookController],
+  providers: [ReportsService, ReportsRepository, DayBookService],
   exports: [ReportsService],
 })
 export class ReportsModule {}

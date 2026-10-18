@@ -152,13 +152,13 @@ export function OwnerDashboard() {
         />
         <StatCard
           label="Total receivable"
-          value={money.format(totalReceivable)}
+          value={formatPartyBalance(-totalReceivable)}
           icon={Scale}
           tone="success"
         />
         <StatCard
           label="Total payable"
-          value={money.format(totalPayable)}
+          value={formatPartyBalance(totalPayable)}
           icon={TrendingDown}
           tone="danger"
         />
@@ -324,3 +324,4 @@ export function OwnerDashboard() {
     </PageContainer>
   );
 }
+import { formatPartyBalance } from '@/features/parties/party-balance';

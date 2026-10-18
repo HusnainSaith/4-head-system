@@ -4,6 +4,7 @@ import {
   NotFoundException,
   Logger,
   Optional,
+  ConflictException,
 } from '@nestjs/common';
 
 import { Expense } from './entities/expense.entity';
@@ -27,37 +28,47 @@ export class ExpensesService {
   ) {}
 
   async create(dto: Partial<Expense>, createdBy?: string) {
-    const expense = this.expensesRepository.createExpense({
-      ...dto,
-      sourceType: 'manual',
-      sourceId: undefined,
-      createdBy,
-    } as any);
-    const saved = await this.expensesRepository.saveExpense(expense);
+    await this.requireActiveCategory(dto.categoryId!);
     const accountLink = paymentAccountLink(dto as Expense);
-    await this.ledgerService.post([
-      {
-        departmentId: saved.departmentId,
-        accountCode: 'operating_expense',
-        entryType: 'debit',
-        amount: saved.amount,
-        entryDate: new Date(saved.expenseDate),
-        sourceType: 'expense',
-        sourceId: saved.id,
-        createdBy,
-      },
-      {
-        departmentId: saved.departmentId,
-        accountCode: saved.paymentMethod,
-        entryType: 'credit',
-        amount: saved.amount,
-        entryDate: new Date(saved.expenseDate),
-        sourceType: 'expense',
-        sourceId: saved.id,
-        createdBy,
-        ...accountLink,
-      },
-    ]);
+    const saved = await this.expensesRepository.transaction(async (manager) => {
+      const expense = this.expensesRepository.createExpense(
+        {
+          ...dto,
+          sourceType: 'manual',
+          sourceId: undefined,
+          createdBy,
+        } as any,
+        manager,
+      );
+      const saved = await this.expensesRepository.saveExpense(expense, manager);
+      await this.ledgerService.post(
+        [
+          {
+            departmentId: saved.departmentId,
+            accountCode: 'operating_expense',
+            entryType: 'debit',
+            amount: saved.amount,
+            entryDate: new Date(saved.expenseDate),
+            sourceType: 'expense',
+            sourceId: saved.id,
+            createdBy,
+          },
+          {
+            departmentId: saved.departmentId,
+            accountCode: saved.paymentMethod,
+            entryType: 'credit',
+            amount: saved.amount,
+            entryDate: new Date(saved.expenseDate),
+            sourceType: 'expense',
+            sourceId: saved.id,
+            createdBy,
+            ...accountLink,
+          },
+        ],
+        manager,
+      );
+      return saved;
+    });
     if (this.invoicesService && this.notificationsService && createdBy)
       await publishBusinessDocument(
         this.invoicesService,
@@ -110,14 +121,15 @@ export class ExpensesService {
     categoryType?: ExpenseCategory['categoryType'];
   }) {
     const category = new ExpenseCategory();
-    category.name = dto.name;
+    category.name = dto.name.trim();
+    await this.validateCategoryName(category.name);
     category.description = dto.description;
     category.categoryType = dto.categoryType ?? 'miscellaneous';
     category.isActive = true;
     category.isSystemGenerated = false;
     return {
       success: true,
-      data: await this.expensesRepository.saveCategory(category),
+      data: await this.saveCategory(category),
     };
   }
   async updateCategory(id: string, dto: Partial<ExpenseCategory>) {
@@ -127,7 +139,9 @@ export class ExpensesService {
       throw new BadRequestException(
         'System-generated expense categories cannot be edited',
       );
-    category.name = dto.name ?? category.name;
+    if (dto.name !== undefined)
+      await this.validateCategoryName(dto.name.trim(), id);
+    category.name = dto.name?.trim() ?? category.name;
     category.description = dto.description ?? category.description;
     category.categoryType = dto.categoryType ?? category.categoryType;
     category.isActive = dto.isActive ?? category.isActive;
@@ -135,6 +149,56 @@ export class ExpensesService {
       success: true,
       data: await this.expensesRepository.saveCategory(category),
     };
+  }
+
+  private async saveCategory(category: ExpenseCategory) {
+    try {
+      return await this.expensesRepository.saveCategory(category);
+    } catch (error) {
+      if ((error as { code?: string }).code === '23505')
+        throw new ConflictException(
+          'An expense category with this name already exists',
+        );
+      throw error;
+    }
+  }
+
+  async getCategory(id: string) {
+    const category = await this.expensesRepository.findCategory(id);
+    if (!category) throw new NotFoundException('Expense category not found');
+    return { success: true, data: category };
+  }
+
+  private async validateCategoryName(name: string, id?: string) {
+    if (!name || name.length > 100)
+      throw new BadRequestException(
+        'Category name must contain 1 to 100 characters',
+      );
+    const existing = await this.expensesRepository.findCategoryWithName(name);
+    if (existing && existing.id !== id)
+      throw new ConflictException(
+        'An expense category with this name already exists',
+      );
+  }
+
+  private async requireActiveCategory(id: string) {
+    const { data } = await this.getCategory(id);
+    if (!data.isActive)
+      throw new BadRequestException('Expense category is inactive');
+  }
+
+  async deleteCategory(id: string) {
+    const { data } = await this.getCategory(id);
+    if (data.isSystemGenerated)
+      throw new BadRequestException(
+        'System-generated expense categories cannot be deleted',
+      );
+    if (await this.expensesRepository.countCategoryExpenses(id))
+      throw new BadRequestException(
+        'Category is used by expenses; deactivate it instead',
+      );
+    await this.expensesRepository.deleteCategory(id);
+    return { success: true, message: 'Expense category deleted', data: null };
   }
 
   async findAll(departmentId?: string) {
@@ -153,41 +217,78 @@ export class ExpensesService {
   }
 
   async update(id: string, dto: UpdateExpenseDto, updatedBy?: string) {
-    const expense = await this.expensesRepository.findOne(id);
-    if (!expense) throw new NotFoundException('Expense not found');
-    if (expense.sourceType !== 'manual')
-      throw new BadRequestException('Only manual expenses can be edited');
+    return this.expensesRepository.transaction(async (manager) => {
+      const expense = await this.expensesRepository.findOne(id, manager);
+      if (!expense) throw new NotFoundException('Expense not found');
+      if (expense.sourceType !== 'manual')
+        throw new BadRequestException('Only manual expenses can be edited');
+      if (dto.categoryId && dto.categoryId !== expense.categoryId)
+        await this.requireActiveCategory(dto.categoryId);
+      paymentAccountLink({ ...expense, ...dto });
 
-    const entryDate = new Date(dto.expenseDate ?? expense.expenseDate);
-    const oldEntries = await this.ledgerService.findBySource('expense', id);
-    if (oldEntries.length)
-      await this.ledgerService.post(
-        oldEntries.map((entry) => ({
-          departmentId: entry.departmentId,
-          accountCode: entry.account.code,
-          entryType: entry.entryType === 'debit' ? 'credit' : 'debit',
-          amount: entry.amount,
-          entryDate,
-          sourceType: 'expense' as const,
-          sourceId: id,
-          description: `Expense edit reversal ${id}`,
-          createdBy: updatedBy,
-          cashAccountId: entry.cashAccountId,
-          bankAccountId: entry.bankAccountId,
-        })),
+      const entryDate = new Date(dto.expenseDate ?? expense.expenseDate);
+      const oldEntries = await this.ledgerService.findBySource(
+        'expense',
+        id,
+        manager,
       );
+      if (oldEntries.length)
+        await this.ledgerService.post(
+          oldEntries.map((entry) => ({
+            departmentId: entry.departmentId,
+            accountCode: entry.account.code,
+            entryType: entry.entryType === 'debit' ? 'credit' : 'debit',
+            amount: entry.amount,
+            entryDate,
+            sourceType: 'expense' as const,
+            sourceId: id,
+            description: `Expense edit reversal ${id}`,
+            createdBy: updatedBy,
+            cashAccountId: entry.cashAccountId,
+            bankAccountId: entry.bankAccountId,
+          })),
+          manager,
+          true,
+        );
 
-    Object.assign(expense, dto, {
-      expenseDate: dto.expenseDate ? new Date(dto.expenseDate) : expense.expenseDate,
-      updatedBy,
+      Object.assign(expense, dto, {
+        expenseDate: dto.expenseDate
+          ? new Date(dto.expenseDate)
+          : expense.expenseDate,
+        updatedBy,
+      });
+      const saved = await this.expensesRepository.saveExpense(expense, manager);
+      const accountLink = paymentAccountLink(saved);
+      await this.ledgerService.post(
+        [
+          {
+            departmentId: saved.departmentId,
+            accountCode: 'operating_expense',
+            entryType: 'debit',
+            amount: saved.amount,
+            entryDate,
+            sourceType: 'expense',
+            sourceId: saved.id,
+            description: saved.description,
+            createdBy: updatedBy,
+          },
+          {
+            departmentId: saved.departmentId,
+            accountCode: saved.paymentMethod,
+            entryType: 'credit',
+            amount: saved.amount,
+            entryDate,
+            sourceType: 'expense',
+            sourceId: saved.id,
+            description: saved.description,
+            createdBy: updatedBy,
+            ...accountLink,
+          },
+        ],
+        manager,
+      );
+      return { success: true, message: 'Expense updated', data: saved };
     });
-    const saved = await this.expensesRepository.saveExpense(expense);
-    const accountLink = paymentAccountLink(saved);
-    await this.ledgerService.post([
-      { departmentId: saved.departmentId, accountCode: 'operating_expense', entryType: 'debit', amount: saved.amount, entryDate, sourceType: 'expense', sourceId: saved.id, description: saved.description, createdBy: updatedBy },
-      { departmentId: saved.departmentId, accountCode: saved.paymentMethod, entryType: 'credit', amount: saved.amount, entryDate, sourceType: 'expense', sourceId: saved.id, description: saved.description, createdBy: updatedBy, ...accountLink },
-    ]);
-    return { success: true, message: 'Expense updated', data: saved };
   }
 
   async createSystemExpense(

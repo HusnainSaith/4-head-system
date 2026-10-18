@@ -13,6 +13,7 @@ const rawBaseQuery = fetchBaseQuery({
   credentials: "include",
   timeout: 45_000,
   prepareHeaders: (headers) => {
+    headers.set("Accept", "application/json");
     const csrfToken = getCsrfToken();
     if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
     return headers;
@@ -70,6 +71,7 @@ async function refreshSession(
   const result = await rawBaseQuery(
     {
       url: "/auth/refresh",
+      timeout: 10_000,
       method: "POST",
       body: {},
     },
@@ -79,8 +81,10 @@ async function refreshSession(
 
   if (!result.error) return true;
 
-  clearAuthCookies();
-  api.dispatch(loggedOut());
+  if(result.error.status === 401 || result.error.status === 403) {
+    clearAuthCookies();
+    api.dispatch(loggedOut());
+  }
   return false;
 }
 
@@ -102,7 +106,10 @@ const baseQueryWithRefresh: BaseQueryFn<
   unknown,
   FetchBaseQueryError
 > = async (args, api, extraOptions) => {
-  const result = await rawBaseQuery(args, api, extraOptions);
+  // Bound read failures without automatically retrying financial mutations.
+  const requestArgs = typeof args === 'string' ? {url: args, timeout: 20_000}
+    : (args.method ?? 'GET').toUpperCase() === 'GET' ? {timeout: 20_000, ...args} : args;
+  const result = await rawBaseQuery(requestArgs, api, extraOptions);
 
   if (!result.error && isImportantMutation(args)) {
     api.dispatch(apiSlice.util.invalidateTags(businessMutationTags));
@@ -120,7 +127,7 @@ const baseQueryWithRefresh: BaseQueryFn<
 
   const refreshed = await refreshInFlight;
   if (!refreshed) return result;
-  const retryResult = await rawBaseQuery(args, api, extraOptions);
+  const retryResult = await rawBaseQuery(requestArgs, api, extraOptions);
   if (!retryResult.error && isImportantMutation(args)) {
     api.dispatch(apiSlice.util.invalidateTags(businessMutationTags));
   }
@@ -131,6 +138,8 @@ const baseQueryWithRefresh: BaseQueryFn<
 export const apiSlice = createApi({
   reducerPath: "api",
   refetchOnReconnect: true,
+  refetchOnFocus: true,
+  refetchOnMountOrArgChange: 30,
   baseQuery: baseQueryWithRefresh,
   tagTypes: [
     "Party",

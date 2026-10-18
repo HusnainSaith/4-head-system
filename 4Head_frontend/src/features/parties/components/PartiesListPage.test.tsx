@@ -175,7 +175,7 @@ describe("PartiesListPage", () => {
     expect(screen.getByText("Beta Broker")).toBeInTheDocument();
   });
 
-  it("shows negative receivables in red and positive payables in normal text", () => {
+  it("labels negative receivables and positive payables consistently", () => {
     mockUseListPartiesQuery().mockReturnValue({
       data: paginatedResponse([
         makeParty({ id: "receivable", name: "Receivable Shop", currentBalance: "-42256.00" }),
@@ -186,8 +186,8 @@ describe("PartiesListPage", () => {
       refetch: vi.fn(),
     } as ReturnType<typeof partiesApiModule.useListPartiesQuery>);
     renderPage();
-    expect(screen.getByText(/-.*42,256/)).toHaveClass("text-red-600");
-    expect(screen.getByText(/\+.*69,274/)).toHaveClass("text-foreground");
+    expect(screen.getByText(/-.*42,256.*Receivable/)).toHaveClass("text-emerald-700");
+    expect(screen.getByText(/\+.*69,274.*Payable/)).toHaveClass("text-red-600");
   });
 
   it("sends name search to the server", async () => {

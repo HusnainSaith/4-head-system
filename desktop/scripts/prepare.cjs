@@ -11,6 +11,13 @@ const runtimeDir = path.join(desktopDir, "runtime");
 const runtimeBackend = path.join(runtimeDir, "backend");
 const preserveDatabase = process.argv.includes("--preserve-database");
 
+function replaceApplicationDirectory(source, destination) {
+  const allowed = [path.join(runtimeBackend, "dist"), path.join(runtimeDir, "frontend")];
+  if (!allowed.includes(path.resolve(destination))) throw new Error("Unsafe application output path");
+  fs.rmSync(destination, { recursive: true, force: true });
+  fs.cpSync(source, destination, { recursive: true });
+}
+
 function run(command, args, cwd, env = process.env) {
   console.log(`> ${command} ${args.join(" ")}`);
   execFileSync(process.env.ComSpec || "cmd.exe", [
@@ -45,9 +52,7 @@ run("npm.cmd", ["run", "build"], frontendDir, {
 for (const file of ["package.json", "package-lock.json"]) {
   fs.copyFileSync(path.join(backendDir, file), path.join(runtimeBackend, file));
 }
-fs.cpSync(path.join(backendDir, "dist"), path.join(runtimeBackend, "dist"), {
-  recursive: true,
-});
+replaceApplicationDirectory(path.join(backendDir, "dist"), path.join(runtimeBackend, "dist"));
 
 if (!preserveDatabase) exportDatabaseSnapshot();
 
@@ -58,8 +63,6 @@ if (!preserveDatabase) {
   path.join(runtimeBackend, "modules"),
 );
 }
-fs.cpSync(path.join(frontendDir, "dist"), path.join(runtimeDir, "frontend"), {
-  recursive: true,
-});
+replaceApplicationDirectory(path.join(frontendDir, "dist"), path.join(runtimeDir, "frontend"));
 
 console.log(preserveDatabase ? "Desktop application updated; database snapshot and uploads unchanged." : "Desktop runtime prepared with all current database records.");

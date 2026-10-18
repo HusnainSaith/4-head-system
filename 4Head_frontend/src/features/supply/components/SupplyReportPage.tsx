@@ -38,13 +38,20 @@ const Report = ({ title, data }: { title: string; data: ProfitLossView }) => (
         <StatCard
           key={label}
           label={label}
-          value={String(label).includes("Weight") || label === "Shrinkage" ? String(value) : money.format(Number(value))}
+          value={
+            String(label).includes("Weight") || label === "Shrinkage"
+              ? String(value)
+              : money.format(Number(value))
+          }
           tone={reportTone(label, value)}
-          delta={label === 'Operating Expenses' && data.shrinkageExpenses !== undefined
-            ? `Includes shrinkage: ${money.format(Number(data.shrinkageExpenses))}`
-            : label === 'Net Profit' && data.otherExpenses !== undefined
-              ? `Expenses deducted (excluding shrinkage): ${money.format(Number(data.otherExpenses))}`
-              : undefined}
+          delta={
+            label === "Operating Expenses" &&
+            data.shrinkageExpenses !== undefined
+              ? `Includes shrinkage: ${money.format(Number(data.shrinkageExpenses))}`
+              : label === "Net Profit" && data.otherExpenses !== undefined
+                ? `Expenses deducted (excluding shrinkage): ${money.format(Number(data.otherExpenses))}`
+                : undefined
+          }
         />
       ))}
     </div>
@@ -100,11 +107,7 @@ export function SupplyReportPage() {
         />
       ) : (
         <div className="space-y-8">
-          <Report title="External Sales Only" data={data.externalOnly} />
-          <Report
-            title="Including Internal Transfers"
-            data={data.includingInternalTransfers}
-          />
+          <Report title="Profit and Loss" data={data.externalOnly} />
         </div>
       )}
     </PageContainer>

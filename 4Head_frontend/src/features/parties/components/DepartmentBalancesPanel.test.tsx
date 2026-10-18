@@ -80,8 +80,8 @@ describe("DepartmentBalancesPanel", () => {
     expect(mockGetBalances).toHaveBeenCalledWith(DepartmentCode.WASTAGE);
     expect(screen.getByText("Total payable")).toBeInTheDocument();
     expect(screen.getByText("Total receivable")).toBeInTheDocument();
-    expect(screen.getByText(/600/)).toBeInTheDocument();
-    expect(screen.getByText(/350/)).toBeInTheDocument();
+    expect(screen.getByText(/\+.*600/)).toBeInTheDocument();
+    expect(screen.getByText(/-.*350/)).toBeInTheDocument();
   });
 
   it("records a payment against a party in this department", async () => {
@@ -238,7 +238,8 @@ describe("DepartmentBalancesPanel", () => {
     );
     await user.type(screen.getByRole("spinbutton", { name: /amount/i }), "420");
 
-    // Test Buyer has balance -350 (receivable), 420 > 350 so the advance hint appears
+    expect(screen.getByText(/Balance after receipt:.*\+.*70.*Payable/)).toBeInTheDocument();
+    // Only the 70 excess becomes payable after the 350 receivable clears.
     expect(
       screen.getByText(/clears the payable balance|advance credit/i),
     ).toBeInTheDocument();

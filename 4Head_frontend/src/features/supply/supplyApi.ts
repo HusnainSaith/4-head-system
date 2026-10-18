@@ -3,17 +3,13 @@ import type { ApiResponse } from "@/types/api";
 import type {
   CreatePurchaseRequest,
   CreateSaleRequest,
-  CreateTransferRequest,
-  InternalTransfer,
   ListQuery,
   PaginatedResponse,
   ProfitLossReport,
-  SettleTransferRequest,
   StockBalance,
   StockWriteoff,
   SupplyPurchase,
   SupplySale,
-  TransferListQuery,
 } from "./types";
 import type { StockWriteoffInput } from "@/components/common/StockWriteoffDialog";
 import type { StockWriteoffResponse } from "@/features/fresh-chicken-shop/types";
@@ -37,12 +33,6 @@ const saleRefresh = [
   { type: "DepartmentBalance" as const, id: "LIST" },
   { type: "ConsolidatedReport" as const, id: "PROFIT_LOSS" },
   { type: "ConsolidatedReport" as const, id: "DEPARTMENTS" },
-];
-const transferRefresh = [
-  { type: "InternalTransfer" as const, id: "LIST" },
-  { type: "SupplyStock" as const, id: "CURRENT" },
-  { type: "FreshChickenStock" as const, id: "CURRENT" },
-  { type: "SupplyReport" as const, id: "PROFIT_LOSS" },
 ];
 export const supplyApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
@@ -161,62 +151,38 @@ export const supplyApi = apiSlice.injectEndpoints({
         { type: "Expense", id: "LIST" },
       ],
     }),
-    listSupplyStockWriteoffs: builder.query<ApiResponse<StockWriteoff[]>, void>({
-      query: () => "/supply/stock/writeoffs",
-      providesTags: [{ type: "SupplyStock" as const, id: "WRITEOFFS" }],
-    }),
-    updateSupplyStockWriteoff: builder.mutation<ApiResponse<StockWriteoff>, { id: string; body: StockWriteoffInput }>({
-      query: ({ id, body }) => ({ url: `/supply/stock/writeoffs/${id}`, method: "PATCH", body }),
-      invalidatesTags: [{ type: "SupplyStock", id: "CURRENT" }, { type: "SupplyStock", id: "WRITEOFFS" }, { type: "SupplyReport", id: "PROFIT_LOSS" }, { type: "Expense", id: "LIST" }],
-    }),
-    deleteSupplyStockWriteoff: builder.mutation<ApiResponse<void>, string>({
-      query: (id) => ({ url: `/supply/stock/writeoffs/${id}`, method: "DELETE" }),
-      invalidatesTags: [{ type: "SupplyStock", id: "CURRENT" }, { type: "SupplyStock", id: "WRITEOFFS" }, { type: "SupplyReport", id: "PROFIT_LOSS" }, { type: "Expense", id: "LIST" }],
-    }),
-    listInternalTransfers: builder.query<
-      PaginatedResponse<InternalTransfer>,
-      TransferListQuery | void
-    >({
-      query: (params) => ({
-        url: "/supply/internal-transfers",
-        params: params ? clean(params) : undefined,
-      }),
-      providesTags: (result) => [
-        { type: "InternalTransfer", id: "LIST" },
-        ...(result?.data.items.map(({ id }) => ({
-          type: "InternalTransfer" as const,
-          id,
-        })) ?? []),
-      ],
-    }),
-    getInternalTransfer: builder.query<ApiResponse<InternalTransfer>, string>({
-      query: (id) => `/supply/internal-transfers/${id}`,
-      providesTags: (_r, _e, id) => [{ type: "InternalTransfer", id }],
-    }),
-    createInternalTransfer: builder.mutation<
-      ApiResponse<InternalTransfer>,
-      CreateTransferRequest
-    >({
-      query: (body) => ({
-        url: "/supply/internal-transfers",
-        method: "POST",
-        body,
-      }),
-      invalidatesTags: transferRefresh,
-    }),
-    settleInternalTransfer: builder.mutation<
-      ApiResponse<InternalTransfer>,
-      { id: string; body: SettleTransferRequest }
+    listSupplyStockWriteoffs: builder.query<ApiResponse<StockWriteoff[]>, void>(
+      {
+        query: () => "/supply/stock/writeoffs",
+        providesTags: [{ type: "SupplyStock" as const, id: "WRITEOFFS" }],
+      },
+    ),
+    updateSupplyStockWriteoff: builder.mutation<
+      ApiResponse<StockWriteoff>,
+      { id: string; body: StockWriteoffInput }
     >({
       query: ({ id, body }) => ({
-        url: `/supply/internal-transfers/${id}/settle`,
-        method: "POST",
+        url: `/supply/stock/writeoffs/${id}`,
+        method: "PATCH",
         body,
       }),
-      invalidatesTags: (_r, _e, { id }) => [
-        { type: "InternalTransfer", id },
-        { type: "InternalTransfer", id: "LIST" },
+      invalidatesTags: [
+        { type: "SupplyStock", id: "CURRENT" },
+        { type: "SupplyStock", id: "WRITEOFFS" },
         { type: "SupplyReport", id: "PROFIT_LOSS" },
+        { type: "Expense", id: "LIST" },
+      ],
+    }),
+    deleteSupplyStockWriteoff: builder.mutation<ApiResponse<void>, string>({
+      query: (id) => ({
+        url: `/supply/stock/writeoffs/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: [
+        { type: "SupplyStock", id: "CURRENT" },
+        { type: "SupplyStock", id: "WRITEOFFS" },
+        { type: "SupplyReport", id: "PROFIT_LOSS" },
+        { type: "Expense", id: "LIST" },
       ],
     }),
     getSupplyProfitLoss: builder.query<
@@ -245,8 +211,5 @@ export const {
   useListSupplyStockWriteoffsQuery,
   useUpdateSupplyStockWriteoffMutation,
   useDeleteSupplyStockWriteoffMutation,
-  useListInternalTransfersQuery,
-  useCreateInternalTransferMutation,
-  useSettleInternalTransferMutation,
   useGetSupplyProfitLossQuery,
 } = supplyApi;

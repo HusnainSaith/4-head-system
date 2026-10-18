@@ -1,4 +1,10 @@
+import {
+  useListShopPurchasesQuery,
+  useCreateShopPurchaseMutation,
+  useDeleteShopPurchaseMutation,
+} from "@/features/fresh-chicken-shop/shopApi";
 import { notesColumn } from "@/components/common/TransactionNotes";
+import { TransactionSearch } from "@/components/common/TransactionSearch";
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { useSelector } from "react-redux";
@@ -76,7 +82,17 @@ const schema = z.object({
   notes: z.string(),
 });
 
-export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
+export function SupplyTransactionsPage({
+  kind,
+  shop = false,
+}: {
+  kind: Kind;
+  shop?: boolean;
+}) {
+  const departmentCode = shop
+    ? DepartmentCode.FRESH_CHICKEN_SHOP
+    : DepartmentCode.SUPPLY;
+  const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -86,6 +102,7 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
     SupplyPurchase | SupplySale | null
   >(null);
   const queryArgs = {
+    search: search.trim() || undefined,
     page,
     limit: 10,
     from: from || undefined,
@@ -94,19 +111,24 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
       SupplyPaymentMethod | undefined,
   };
   const purchases = useListSupplyPurchasesQuery(queryArgs, {
-    skip: kind !== "purchase",
+    skip: kind !== "purchase" || shop,
   });
   const sales = useListSupplySalesQuery(queryArgs, { skip: kind !== "sale" });
-  const query = kind === "purchase" ? purchases : sales;
+  const shopPurchases = useListShopPurchasesQuery(queryArgs, { skip: !shop });
+  const query = shop ? shopPurchases : kind === "purchase" ? purchases : sales;
   const stock = useGetSupplyStockQuery(undefined, { skip: kind !== "sale" });
   const role = useSelector(selectUserRole);
   const department = useSelector(selectUserDepartmentCode);
   const canWrite =
     role === Role.OWNER ||
     role === Role.ACCOUNTANT ||
-    (role === Role.DEPARTMENT_STAFF && department === DepartmentCode.SUPPLY);
+    (role === Role.DEPARTMENT_STAFF && department === departmentCode);
   const canInvoice = role === Role.OWNER || role === Role.ACCOUNTANT;
   const [createPurchase, purchaseState] = useCreateSupplyPurchaseMutation();
+  const [createShopPurchase, shopPurchaseState] =
+    useCreateShopPurchaseMutation();
+  const [cancelShopPurchase, cancelShopPurchaseState] =
+    useDeleteShopPurchaseMutation();
   const [createSale, saleState] = useCreateSupplySaleMutation();
   const [cancelPurchase, cancelPurchaseState] =
     useDeleteSupplyPurchaseMutation();
@@ -118,11 +140,9 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
     notesColumn(),
     {
       id: "party",
-      header: kind === "purchase" ? "Broker" : "Shop owner",
+      header: kind === "purchase" ? "Supplier" : "Shop owner",
       cell: (row) =>
-        kind === "purchase" && (row as SupplyPurchase).sourceBrokerageSaleId ? (
-          <span className="font-medium">Brokerage department</span>
-        ) : row.partyId ? (
+        row.partyId ? (
           <a
             className="font-medium text-primary hover:underline"
             href={`/parties/${row.partyId}`}
@@ -133,18 +153,6 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
           (row.party?.name ?? "—")
         ),
     },
-    ...(kind === "purchase"
-      ? [
-          {
-            id: "source",
-            header: "Source",
-            cell: (row: SupplyPurchase | SupplySale) =>
-              (row as SupplyPurchase).sourceBrokerageSaleId
-                ? "Automatic Brokerage transfer"
-                : "Manual",
-          },
-        ]
-      : []),
     {
       id: "quantity",
       header: "Weight",
@@ -191,7 +199,7 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
     {
       id: "outstanding",
       header: kind === "purchase" ? "Initial payable" : "Initial receivable",
-      cell: (row) => money.format(Number(row.outstandingAmount)),
+      cell: (row) => formatPartyBalance(transactionPartyBalance(kind, row.outstandingAmount)),
       align: "right",
     },
     {
@@ -254,7 +262,7 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
     return (
       <PageContainer>
         <ErrorState
-          title={`Supply ${kind}s could not be loaded`}
+          title={`${shop ? "Fresh Chicken Shop" : "Supply"} ${kind}s could not be loaded`}
           description={getApiErrorMessage(query.error)}
           onRetry={() => void query.refetch()}
         />
@@ -263,11 +271,11 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
   return (
     <PageContainer>
       <PageHeader
-        title={`Supply ${kind === "purchase" ? "Purchases" : "External Sales"}`}
+        title={`${shop ? "Fresh Chicken Shop" : "Supply"} ${kind === "purchase" ? "Purchases" : "External Sales"}`}
         description={
           kind === "sale"
-            ? "This page records external sales to independent shop owners. Transfers to the business’s own Fresh Chicken Shop are recorded separately under Internal Transfers."
-            : "Purchases of Supply stock from broker parties."
+            ? "This page records external sales to independent shop owners. "
+            : "Purchases from external suppliers."
         }
         actions={
           canWrite ? (
@@ -278,7 +286,7 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
           ) : undefined
         }
       />
-      <DepartmentBalancesPanel departmentCode={DepartmentCode.SUPPLY} />
+      <DepartmentBalancesPanel departmentCode={departmentCode} />
       <div className="grid gap-3 sm:grid-cols-3">
         <div>
           <Label htmlFor={`${kind}-from`}>From</Label>
@@ -327,11 +335,18 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
           </Select>
         </div>
       </div>
+      <TransactionSearch
+        value={search}
+        onChange={(value) => {
+          setSearch(value);
+          setPage(1);
+        }}
+      />
       <DataTable
         columns={columns}
         data={records}
         getRowId={(row) => row.id}
-        emptyContent={<EmptyState title={`No Supply ${kind}s found`} />}
+        emptyContent={<EmptyState title={`No ${kind}s found`} />}
       />
       <div className="flex justify-end gap-2">
         <Button
@@ -350,15 +365,22 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
         </Button>
       </div>
       <TransactionDialog
+        departmentCode={departmentCode}
         kind={kind}
         open={open}
         available={stock.data?.data.quantityKg}
-        loading={purchaseState.isLoading || saleState.isLoading}
+        loading={
+          purchaseState.isLoading ||
+          shopPurchaseState.isLoading ||
+          saleState.isLoading
+        }
         onClose={() => setOpen(false)}
         onSubmit={async (body) => {
           try {
             if (kind === "purchase")
-              await createPurchase(body as CreatePurchaseRequest).unwrap();
+              await (shop ? createShopPurchase : createPurchase)(
+                body as CreatePurchaseRequest,
+              ).unwrap();
             else await createSale(body as CreateSaleRequest).unwrap();
             toast.success(
               `${kind === "purchase" ? "Purchase" : "Sale"} recorded`,
@@ -372,16 +394,20 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
       <ConfirmDialog
         open={Boolean(pendingCancel)}
         onOpenChange={(nextOpen) => !nextOpen && setPendingCancel(null)}
-        title={`Cancel this Supply ${kind}?`}
+        title={`Cancel this ${shop ? "Shop" : "Supply"} ${kind}?`}
         description="Stock and ledger effects will be reversed and the original transaction retained for audit history."
         confirmLabel={`Cancel ${kind}`}
         destructive
-        loading={cancelPurchaseState.isLoading || cancelSaleState.isLoading}
+        loading={
+          cancelPurchaseState.isLoading ||
+          cancelShopPurchaseState.isLoading ||
+          cancelSaleState.isLoading
+        }
         onConfirm={() => {
           if (!pendingCancel) return;
           const mutation =
             kind === "purchase"
-              ? cancelPurchase(pendingCancel.id)
+              ? (shop ? cancelShopPurchase : cancelPurchase)(pendingCancel.id)
               : cancelSale(pendingCancel.id);
           void mutation
             .unwrap()
@@ -397,6 +423,7 @@ export function SupplyTransactionsPage({ kind }: { kind: Kind }) {
 }
 
 function TransactionDialog({
+  departmentCode,
   kind,
   open,
   available,
@@ -405,6 +432,7 @@ function TransactionDialog({
   onSubmit,
 }: {
   kind: Kind;
+  departmentCode: DepartmentCode;
   open: boolean;
   available?: string;
   loading: boolean;
@@ -415,13 +443,20 @@ function TransactionDialog({
   const isAdmin = role === Role.OWNER || role === Role.ACCOUNTANT;
   const [partySearch, setPartySearch] = useState("");
   const departments = useListDepartmentsQuery(undefined, { skip: !open });
-  const supplyDeptId = departments.data?.data.find((d) => d.type === "SUPPLY")?.id;
+  const supplyDeptId = departments.data?.data.find(
+    (d) => d.type.toLowerCase() === departmentCode,
+  )?.id;
   const parties = useListPartiesQuery(
     {
       departmentId: supplyDeptId,
-      type: kind === "purchase" ? PartyType.BROKER : undefined,
-      search: isAdmin ? partySearch || undefined : undefined,
-      limit: isAdmin ? 50 : 200,
+      type:
+        kind === "purchase"
+          ? departmentCode === DepartmentCode.FRESH_CHICKEN_SHOP
+            ? PartyType.FARM
+            : PartyType.BROKER
+          : undefined,
+      search: partySearch || undefined,
+      limit: isAdmin ? 50 : 100,
     },
     { skip: !open || !supplyDeptId },
   );
@@ -434,7 +469,8 @@ function TransactionDialog({
   const [vehicleId, setVehicleId] = useState("");
   const [notes, setNotes] = useState("");
   const [error, setError] = useState("");
-  const [accountSelection, setAccountSelection] = useState<PaymentAccountSelection>({});
+  const [accountSelection, setAccountSelection] =
+    useState<PaymentAccountSelection>({});
   const preview = Number(quantity) * Number(rate);
   const submit = (event: React.FormEvent) => {
     event.preventDefault();
@@ -461,11 +497,12 @@ function TransactionDialog({
     }
     if (parsed.data.paymentAmount < preview && !partyId) {
       setError(
-        `Select a ${kind === "purchase" ? "broker" : "shop owner"} when an outstanding balance remains.`,
+        `Select a ${kind === "purchase" ? "supplier" : "shop owner"} when an outstanding balance remains.`,
       );
       return;
     }
     const common = {
+      ...accountSelection,
       partyId: partyId || undefined,
       quantityKg: parsed.data.quantityKg,
       ratePerKg: parsed.data.ratePerKg,
@@ -508,15 +545,18 @@ function TransactionDialog({
             <p className="text-sm text-destructive sm:col-span-2">{error}</p>
           ) : null}
           <div>
-            <Label>{kind === "purchase" ? "Broker" : "Shop owner"}</Label>
-            {isAdmin && (
+            <Label>{kind === "purchase" ? "Supplier" : "Shop owner"}</Label>
+            {
               <Input
                 placeholder="Search parties…"
                 value={partySearch}
-                onChange={(e) => { setPartySearch(e.target.value); setPartyId(""); }}
+                onChange={(e) => {
+                  setPartySearch(e.target.value);
+                  setPartyId("");
+                }}
                 className="mb-1"
               />
-            )}
+            }
             <Select
               value={partyId || "none"}
               onValueChange={(v) => setPartyId(v === "none" ? "" : v)}
@@ -560,7 +600,10 @@ function TransactionDialog({
             <Label>Payment method</Label>
             <Select
               value={method}
-              onValueChange={(v) => { setMethod(v as SupplyPaymentMethod); setAccountSelection({}); }}
+              onValueChange={(v) => {
+                setMethod(v as SupplyPaymentMethod);
+                setAccountSelection({});
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -574,7 +617,13 @@ function TransactionDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="sm:col-span-2"><PaymentAccountFields paymentMethod={method} value={accountSelection} onChange={setAccountSelection} /></div>
+          <div className="sm:col-span-2">
+            <PaymentAccountFields
+              paymentMethod={method}
+              value={accountSelection}
+              onChange={setAccountSelection}
+            />
+          </div>
           <div>
             <Label htmlFor={`${kind}-payment`}>
               {kind === "purchase" ? "Amount paid" : "Amount received"}
@@ -600,7 +649,7 @@ function TransactionDialog({
           <div>
             <Label>Vehicle</Label>
             <DepartmentVehicleSelect
-              departmentCode={DepartmentCode.SUPPLY}
+              departmentCode={departmentCode}
               value={vehicleId}
               onChange={setVehicleId}
             />
@@ -637,3 +686,4 @@ function TransactionDialog({
     </Dialog>
   );
 }
+import { formatPartyBalance, transactionPartyBalance } from '@/features/parties/party-balance';

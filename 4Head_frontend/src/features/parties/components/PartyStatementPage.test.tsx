@@ -1,10 +1,53 @@
+vi.mock("@/features/wastage/wastageApi", () => ({
+  useUpdateSaleMutation: () => [mockWastageUpdate, { isLoading: false }],
+  useUpdatePurchaseMutation: () => [mockWastageUpdate, { isLoading: false }],
+  useDeleteSaleMutation: () => [mockWastageDelete],
+  useDeletePurchaseMutation: () => [mockWastageDelete],
+}));
+vi.mock("@/features/fresh-chicken-shop/shopApi", () => ({
+  useUpdateShopSaleMutation: () => [mockShopUpdate, { isLoading: false }],
+  useUpdateShopPurchaseMutation: () => [mockShopUpdate, { isLoading: false }],
+  useDeleteShopSaleMutation: () => [mockShopDelete],
+  useDeleteShopPurchaseMutation: () => [mockShopDelete],
+}));
+let mockDepartmentType = "BROKERAGE";
+const mockWastageUpdate = vi.fn();
+const mockWastageDelete = vi.fn();
+const mockShopUpdate = vi.fn();
+const mockShopDelete = vi.fn();
+const mockBrokerageUpdateSale = vi.fn();
+const mockBrokerageUpdatePurchase = vi.fn();
+const mockBrokerageDeleteSale = vi.fn();
+const mockBrokerageDeletePurchase = vi.fn();
+vi.mock("@/features/parties/components/PartyFormDialog", () => ({
+  PartyFormDialog: ({ party }: { party: { currentBalance?: string } }) => (
+    <div data-testid="party-editor-balance">{party.currentBalance}</div>
+  ),
+}));
+vi.mock("@/features/departments/departmentsApi", () => ({
+  useListDepartmentsQuery: () => ({
+    data: { data: [{ id: "dept-1", type: mockDepartmentType }] },
+  }),
+}));
+vi.mock("@/features/brokerage/brokerageApi", () => ({
+  useUpdateBrokerageSaleMutation: () => [
+    mockBrokerageUpdateSale,
+    { isLoading: false },
+  ],
+  useUpdateBrokeragePurchaseMutation: () => [
+    mockBrokerageUpdatePurchase,
+    { isLoading: false },
+  ],
+  useDeleteBrokerageSaleMutation: () => [mockBrokerageDeleteSale],
+  useDeleteBrokeragePurchaseMutation: () => [mockBrokerageDeletePurchase],
+}));
 /**
  * PartyStatementPage — statement rows and payment dialog submit tests.
  */
 import { configureStore } from "@reduxjs/toolkit";
 import { Provider } from "react-redux";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import authReducer from "@/features/auth/authSlice";
 import { apiSlice } from "@/store/apiSlice";
@@ -16,20 +59,24 @@ import {
 } from "@/features/parties/types";
 
 // ── mock mutations / queries ───────────────────────────────────────────────
+const mockUpdateAdjustment = vi.fn();
+const mockDeleteAdjustment = vi.fn();
 const mockRecordPayment = vi.fn();
 const mockDeleteParty = vi.fn();
 
 vi.mock("@/features/parties/partiesApi", () => ({
+  useUpdateStatementAdjustmentMutation: () => [
+    mockUpdateAdjustment,
+    { isLoading: false },
+  ],
+  useDeleteStatementAdjustmentMutation: () => [
+    mockDeleteAdjustment,
+    { isLoading: false },
+  ],
   useGetPartyQuery: vi.fn(),
   useGetPartyStatementQuery: vi.fn(),
-  useDeletePartyMutation: vi.fn(() => [
-    mockDeleteParty,
-    { isLoading: false },
-  ]),
-  useUpdatePartyPaymentMutation: vi.fn(() => [
-    vi.fn(),
-    { isLoading: false },
-  ]),
+  useDeletePartyMutation: vi.fn(() => [mockDeleteParty, { isLoading: false }]),
+  useUpdatePartyPaymentMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
   useDeletePartyPaymentMutation: vi.fn(() => [vi.fn(), { isLoading: false }]),
   useRecordPartyPaymentMutation: vi.fn(() => [
     mockRecordPayment,
@@ -152,8 +199,12 @@ describe("PartyStatementPage", () => {
   it("shows edit and delete party actions", () => {
     setupSuccessfulQueries();
     renderPage();
-    expect(screen.getAllByRole("button", { name: /^edit$/i }).length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("button", { name: /^delete$/i }).length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("button", { name: /^edit$/i }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("button", { name: /^delete$/i }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows receivable/payable totals and prints the statement", async () => {
@@ -172,16 +223,16 @@ describe("PartyStatementPage", () => {
     renderPage();
     expect(screen.getByText("Receivable from party")).toBeInTheDocument();
     expect(screen.getByText("Payable to party")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /print statement/i })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: /print statement/i }),
+    ).toBeDisabled();
     await userEvent.type(screen.getByLabelText("From"), "2025-01-01");
     await userEvent.type(screen.getByLabelText("To"), "2025-03-31");
     await userEvent.click(
       screen.getByRole("button", { name: /print statement/i }),
     );
     expect(printWindow.document.write).toHaveBeenCalledWith(
-      expect.stringContaining(
-        "<title>4Head ERP</title>",
-      ),
+      expect.stringContaining("<title>4Head ERP</title>"),
     );
     expect(printWindow.document.write).toHaveBeenCalledWith(
       expect.stringContaining("<h1>Account History</h1>"),
@@ -195,14 +246,24 @@ describe("PartyStatementPage", () => {
     vi.restoreAllMocks();
   });
 
-  it.each(["sale", "purchase", "payment"] as const)("shows the admin's saved %s note separately from the type", (sourceType) => {
-    setupSuccessfulQueries([makeEntry({ sourceType, description: "Admin's exact message\nSecond line" })]);
-    renderPage();
-    expect(screen.getByRole("columnheader", { name: "Notes" })).toBeInTheDocument();
-    const note = screen.getByText("Admin's exact message Second line");
-    expect(note.textContent).toBe("Admin's exact message\nSecond line");
-    expect(note).toHaveClass("whitespace-pre-wrap");
-  });
+  it.each(["sale", "purchase", "payment"] as const)(
+    "shows the admin's saved %s note separately from the type",
+    (sourceType) => {
+      setupSuccessfulQueries([
+        makeEntry({
+          sourceType,
+          description: "Admin's exact message\nSecond line",
+        }),
+      ]);
+      renderPage();
+      expect(
+        screen.getByRole("columnheader", { name: "Notes" }),
+      ).toBeInTheDocument();
+      const note = screen.getByText("Admin's exact message Second line");
+      expect(note.textContent).toBe("Admin's exact message\nSecond line");
+      expect(note).toHaveClass("whitespace-pre-wrap");
+    },
+  );
 
   it("renders statement entry rows", () => {
     setupSuccessfulQueries([
@@ -243,7 +304,11 @@ describe("PartyStatementPage", () => {
 
   it("shows period totals and closing balance at the end of the statement", () => {
     setupSuccessfulQueries([
-      makeEntry({ entryType: "debit", amount: "1000", runningBalance: "-1000" }),
+      makeEntry({
+        entryType: "debit",
+        amount: "1000",
+        runningBalance: "-1000",
+      }),
       makeEntry({
         id: "entry-2",
         entryType: "credit",
@@ -367,4 +432,260 @@ describe("PartyStatementPage", () => {
       expect(screen.getByText("Amount is required")).toBeInTheDocument();
     });
   });
+
+  it.each(["sale", "purchase"] as const)(
+    "routes a Brokerage %s edit to Brokerage instead of Supply",
+    async (sourceType) => {
+      const user = userEvent.setup();
+      const mutation =
+        sourceType === "sale"
+          ? mockBrokerageUpdateSale
+          : mockBrokerageUpdatePurchase;
+      mutation.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+      setupSuccessfulQueries([makeEntry({ sourceType })], makeParty());
+      renderPage();
+      await user.click(
+        screen.getAllByRole("button", { name: /^edit$/i }).at(-1)!,
+      );
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() =>
+        expect(mutation).toHaveBeenCalledWith(
+          expect.objectContaining({
+            id: "src-1",
+            body:
+              sourceType === "sale"
+                ? { saleDate: "2025-03-01" }
+                : { purchaseDate: "2025-03-01" },
+          }),
+        ),
+      );
+    },
+  );
+  it.each(["sale", "purchase"] as const)(
+    "cancels a Brokerage %s from its statement",
+    async (sourceType) => {
+      const user = userEvent.setup();
+      const mutation =
+        sourceType === "sale"
+          ? mockBrokerageDeleteSale
+          : mockBrokerageDeletePurchase;
+      mutation.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      setupSuccessfulQueries([makeEntry({ sourceType })], makeParty());
+      renderPage();
+      await user.click(
+        screen.getAllByRole("button", { name: /^delete$/i }).at(-1)!,
+      );
+      await waitFor(() => expect(mutation).toHaveBeenCalledWith("src-1"));
+      vi.restoreAllMocks();
+    },
+  );
+
+  it("preserves payment amount and account when saving a date-only change", async () => {
+    const user = userEvent.setup();
+    const mutation = vi.fn(() => ({ unwrap: () => Promise.resolve({}) }));
+    vi.mocked(partiesApiModule.useUpdatePartyPaymentMutation).mockReturnValue([
+      mutation,
+      { isLoading: false },
+    ] as unknown as ReturnType<
+      typeof partiesApiModule.useUpdatePartyPaymentMutation
+    >);
+    setupSuccessfulQueries([makeEntry({ sourceType: "payment" })]);
+    renderPage();
+    await user.click(
+      screen.getAllByRole("button", { name: /^edit$/i }).at(-1)!,
+    );
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(mutation).toHaveBeenCalledWith({
+        id: "party-1",
+        paymentId: "src-1",
+        body: { paymentDate: "2025-03-01" },
+      }),
+    );
+  });
+});
+describe("Party editor signed balance", () => {
+  it.each(["-350.00", "350.00"])(
+    "uses the statement balance %s when the party detail has no balance field",
+    async (balance) => {
+      const user = userEvent.setup();
+      setupSuccessfulQueries(
+        [
+          makeEntry({
+            amount: "350.00",
+            entryType: balance.startsWith("-") ? "debit" : "credit",
+            runningBalance: balance,
+          }),
+        ],
+        makeParty({ currentBalance: undefined }),
+        balance,
+      );
+      renderPage();
+      await user.click(screen.getByTitle("Edit party"));
+      expect(screen.getByTestId("party-editor-balance")).toHaveTextContent(
+        balance,
+      );
+    },
+  );
+});
+
+describe("Statement adjustments", () => {
+  it.each([undefined, "2500.00"])(
+    "edits the complete adjustment amount (%s)",
+    async (settlementAmount) => {
+      const user = userEvent.setup();
+      mockUpdateAdjustment.mockClear();
+      mockUpdateAdjustment.mockReturnValue({
+        unwrap: () => Promise.resolve({}),
+      });
+      setupSuccessfulQueries([
+        makeEntry({ sourceType: "party_adjustment", settlementAmount }),
+      ]);
+      renderPage();
+      await user.click(
+        screen.getAllByRole("button", { name: /^edit$/i }).at(-1)!,
+      );
+      expect(screen.getByLabelText("Amount")).toHaveValue(
+        settlementAmount ? 2500 : 1000,
+      );
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() =>
+        expect(mockUpdateAdjustment).toHaveBeenCalledWith({
+          id: "party-1",
+          entryId: "entry-1",
+          body: {
+            date: "2025-03-01",
+            amount: settlementAmount ? 2500 : 1000,
+            entryType: "debit",
+            notes: "Sale entry",
+          },
+        }),
+      );
+    },
+  );
+  it("deletes an adjustment through its guarded endpoint", async () => {
+    const user = userEvent.setup();
+    mockDeleteAdjustment.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    setupSuccessfulQueries([makeEntry({ sourceType: "party_adjustment" })]);
+    renderPage();
+    await user.click(
+      screen.getAllByRole("button", { name: /^delete$/i }).at(-1)!,
+    );
+    await waitFor(() =>
+      expect(mockDeleteAdjustment).toHaveBeenCalledWith({
+        id: "party-1",
+        entryId: "entry-1",
+      }),
+    );
+    vi.restoreAllMocks();
+  });
+});
+
+describe("Statement action safeguards", () => {
+  it.each(["opening_balance", "party_adjustment"] as const)(
+    "edits %s through the balance endpoint",
+    async (sourceType) => {
+      const user = userEvent.setup();
+      mockUpdateAdjustment.mockReturnValue({
+        unwrap: () => Promise.resolve({}),
+      });
+      setupSuccessfulQueries([makeEntry({ sourceType })]);
+      renderPage();
+      await user.click(
+        screen.getAllByRole("button", { name: /^edit$/i }).at(-1)!,
+      );
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() =>
+        expect(mockUpdateAdjustment).toHaveBeenCalledWith(
+          expect.objectContaining({ entryId: "entry-1" }),
+        ),
+      );
+    },
+  );
+  it("does not offer mutation buttons on reversed settlements", () => {
+    setupSuccessfulQueries([
+      makeEntry({
+        sourceType: "party_adjustment",
+        settlementStatus: "reversed",
+      }),
+    ]);
+    renderPage();
+    expect(screen.getByText("Reversed")).toBeInTheDocument();
+    const row = within(screen.getByText("Reversed").closest("tr")!);
+    expect(
+      row.queryByRole("button", { name: /^edit$/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      row.queryByRole("button", { name: /^delete$/i }),
+    ).not.toBeInTheDocument();
+  });
+  it("preserves the complete amount for a split payment date correction", async () => {
+    const user = userEvent.setup();
+    const mutation = vi.fn(() => ({ unwrap: () => Promise.resolve({}) }));
+    vi.mocked(partiesApiModule.useUpdatePartyPaymentMutation).mockReturnValue([
+      mutation,
+      { isLoading: false },
+    ] as unknown as ReturnType<
+      typeof partiesApiModule.useUpdatePartyPaymentMutation
+    >);
+    setupSuccessfulQueries([
+      makeEntry({
+        sourceType: "payment",
+        amount: "1000",
+        paymentAmount: "2500",
+      }),
+    ]);
+    renderPage();
+    await user.click(
+      screen.getAllByRole("button", { name: /^edit$/i }).at(-1)!,
+    );
+    expect(screen.getByLabelText("Amount")).toHaveValue(2500);
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(mutation).toHaveBeenCalledWith({
+        id: "party-1",
+        paymentId: "src-1",
+        body: { paymentDate: "2025-03-01" },
+      }),
+    );
+  });
+});
+
+describe("Statement department routing", () => {
+  afterEach(() => {
+    mockDepartmentType = "BROKERAGE";
+    vi.restoreAllMocks();
+  });
+  it.each(["WASTAGE", "FRESH_CHICKEN_SHOP"])(
+    "edits and cancels transactions using %s operations",
+    async (department) => {
+      mockDepartmentType = department;
+      const update =
+        department === "WASTAGE" ? mockWastageUpdate : mockShopUpdate;
+      const remove =
+        department === "WASTAGE" ? mockWastageDelete : mockShopDelete;
+      update.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+      remove.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+      const user = userEvent.setup();
+      setupSuccessfulQueries([makeEntry({ sourceType: "sale" })]);
+      renderPage();
+      await user.click(
+        screen.getAllByRole("button", { name: /^edit$/i }).at(-1)!,
+      );
+      await user.click(screen.getByRole("button", { name: "Save changes" }));
+      await waitFor(() =>
+        expect(update).toHaveBeenCalledWith({
+          id: "src-1",
+          body: { saleDate: "2025-03-01" },
+        }),
+      );
+      vi.spyOn(window, "confirm").mockReturnValue(true);
+      await user.click(
+        screen.getAllByRole("button", { name: /^delete$/i }).at(-1)!,
+      );
+      await waitFor(() => expect(remove).toHaveBeenCalledWith("src-1"));
+    },
+  );
 });

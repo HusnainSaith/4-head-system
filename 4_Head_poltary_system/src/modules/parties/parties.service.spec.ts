@@ -339,14 +339,56 @@ describe('PartiesService party-to-party settlement', () => {
     );
   });
 
-  it('rejects an amount above either available balance', async () => {
+  it('rejects a non-positive transfer amount', async () => {
     await expect(
       service.createPartySettlement(
-        { ...dto, settlementAmount: 300.01 },
+        { ...dto, settlementAmount: 0 },
         'admin-1',
       ),
-    ).rejects.toThrow('exceeds maximum available (300)');
+    ).rejects.toThrow('Settlement amount must be greater than 0');
     expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
+  it('transfers between two negative parties and keeps notes/reference', async () => {
+    ledger.getPartyDepartmentBalance.mockReset();
+    ledger.getPartyDepartmentBalance.mockResolvedValueOnce('-22755458.00').mockResolvedValueOnce('-148821625.00');
+    const settlementRepository = {
+      create: jest.fn(value => value),
+      save: jest.fn(async value => ({ id: 'negative-transfer', ...value })),
+      findOneOrFail: jest.fn(async () => ({ id: 'negative-transfer' })),
+    };
+    (dataSource.transaction as jest.Mock).mockImplementation(async callback => callback({ getRepository: () => settlementRepository }));
+    await service.createPartySettlement({ ...dto, settlementAmount: 16307, reference: '50/8 x321', notes: 'Transfer note' }, 'admin-1');
+    expect(settlementRepository.create).toHaveBeenCalledWith(expect.objectContaining({ reference: '50/8 x321', notes: 'Transfer note' }));
+    expect(ledger.post).toHaveBeenCalledWith([
+      expect.objectContaining({ partyId: dto.payablePartyId, accountCode: 'accounts_receivable', entryType: 'debit', amount: '16307.00' }),
+      expect.objectContaining({ partyId: dto.receivablePartyId, accountCode: 'accounts_receivable', entryType: 'credit', amount: '16307.00' }),
+    ], expect.anything());
+  });
+
+  it('settles the payable and posts the excess as receivable without cash or bank', async () => {
+    ledger.getPartyDepartmentBalance.mockReset();
+    ledger.getPartyDepartmentBalance
+      .mockResolvedValueOnce('274443.00')
+      .mockResolvedValueOnce('-20949327.00');
+    const settlementRepository = {
+      create: jest.fn(value => value),
+      save: jest.fn(async value => ({ id: 'excess-settlement', ...value })),
+      findOneOrFail: jest.fn(async () => ({ id: 'excess-settlement' })),
+    };
+    (dataSource.transaction as jest.Mock).mockImplementation(async callback =>
+      callback({ getRepository: () => settlementRepository }),
+    );
+    await service.createPartySettlement({ ...dto, settlementAmount: 300000 }, 'admin-1');
+    const entries = (ledger.post as jest.Mock).mock.calls[0][0];
+    expect(entries).toEqual([
+      expect.objectContaining({ partyId: dto.payablePartyId, accountCode: 'accounts_payable', entryType: 'debit', amount: '274443.00' }),
+      expect.objectContaining({ partyId: dto.payablePartyId, accountCode: 'accounts_receivable', entryType: 'debit', amount: '25557.00' }),
+      expect.objectContaining({ partyId: dto.receivablePartyId, accountCode: 'accounts_receivable', entryType: 'credit', amount: '300000.00' }),
+    ]);
+    expect(274443 - entries.filter(entry => entry.partyId === dto.payablePartyId).reduce((sum, entry) => sum + Number(entry.amount), 0)).toBe(-25557);
+    expect(-20949327 + Number(entries[2].amount)).toBe(-20649327);
+    expect(entries.filter(entry => entry.entryType === 'debit').reduce((sum, entry) => sum + Number(entry.amount), 0)).toBe(300000);
   });
 
   it('deleting an active settlement reverses its ledger before soft deletion', async () => {

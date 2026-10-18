@@ -6,7 +6,15 @@ import {
   Logger,
   Optional,
 } from '@nestjs/common';
-import { DataSource, EntityManager } from 'typeorm';
+import { DataSource, EntityManager, IsNull } from 'typeorm';
+import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
+import { StockMovement } from '../inventory/entities/stock-movement.entity';
+import { ShopPurchase } from './entities/shop-purchase.entity';
+import { Party } from '../parties/entities/party.entity';
+import {
+  CreateSupplyPurchaseDto,
+  SupplyListQueryDto,
+} from '../supply/dto/supply.dto';
 import { FreshChickenShopRepository } from './fresh-chicken-shop.repository';
 import { DepartmentsService } from '../departments/departments.service';
 import { InventoryService } from '../inventory/inventory.service';
@@ -47,6 +55,222 @@ export class FreshChickenShopService implements OnModuleInit {
   async onModuleInit() {
     const dept = await this.departmentsService.findByType('FRESH_CHICKEN_SHOP');
     this.shopDeptId = dept.id;
+  }
+
+  async createPurchase(dto: CreateSupplyPurchaseDto, createdBy: string) {
+    const saved = await this.dataSource.transaction(async (manager) => {
+      await this.validateVehicle(dto.vehicleId, manager);
+      if (
+        dto.partyId &&
+        !(await manager.findOne(Party, { where: { id: dto.partyId } }))
+      )
+        throw new NotFoundException('Supplier not found');
+      const totalAmount = (dto.quantityKg * dto.ratePerKg).toFixed(2);
+      const payment = resolveTransactionPayment({
+        totalAmount,
+        enteredAmount: dto.amountPaid,
+        paymentMethod: dto.paymentMethod,
+        ...paymentAccountLink(dto),
+        partyId: dto.partyId,
+        amountLabel: 'Amount paid',
+      });
+      const purchase = await manager.save(
+        ShopPurchase,
+        manager.create(ShopPurchase, {
+          departmentId: this.shopDeptId,
+          partyId: dto.partyId,
+          quantityKg: dto.quantityKg.toFixed(3),
+          ratePerKg: dto.ratePerKg.toFixed(2),
+          totalAmount,
+          paymentMethod: dto.paymentMethod,
+          ...paymentAccountLink(dto),
+          amountPaid: payment.settledAmount,
+          outstandingAmount: payment.outstandingAmount,
+          purchaseDate: new Date(dto.purchaseDate),
+          vehicleId: dto.vehicleId,
+          status: 'posted',
+          notes: dto.notes,
+          createdBy,
+          updatedBy: createdBy,
+        } as Partial<ShopPurchase>),
+      );
+
+      await this.inventoryService.applyPurchaseIn(
+        this.shopDeptId,
+        dto.quantityKg,
+        dto.ratePerKg,
+        StockMovementSourceEnum.PURCHASE,
+        purchase.id,
+        new Date(dto.purchaseDate),
+        manager,
+        StockType.LIVE,
+      );
+
+      const entries: PostEntryDto[] = [
+        {
+          departmentId: this.shopDeptId,
+          accountCode: 'inventory',
+          entryType: 'debit',
+          amount: totalAmount,
+          entryDate: new Date(dto.purchaseDate),
+          sourceType: 'purchase',
+          sourceId: purchase.id,
+          createdBy,
+        },
+      ];
+      if (payment.settledValue > 0)
+        entries.push({
+          departmentId: this.shopDeptId,
+          accountCode: dto.paymentMethod === 'bank' ? 'bank' : 'cash',
+          ...paymentAccountLink(dto),
+          entryType: 'credit',
+          amount: payment.settledAmount,
+          entryDate: new Date(dto.purchaseDate),
+          sourceType: 'purchase',
+          sourceId: purchase.id,
+          createdBy,
+        });
+      if (payment.outstandingValue > 0)
+        entries.push({
+          departmentId: this.shopDeptId,
+          accountCode: 'accounts_payable',
+          partyId: dto.partyId,
+          entryType: 'credit',
+          amount: payment.outstandingAmount,
+          entryDate: new Date(dto.purchaseDate),
+          sourceType: 'purchase',
+          sourceId: purchase.id,
+          createdBy,
+        });
+      await this.ledgerService.post(entries, manager);
+
+      return purchase;
+    });
+    if (this.invoicesService && this.notificationsService)
+      await publishBusinessDocument(
+        this.invoicesService,
+        this.notificationsService,
+        {
+          invoiceType: 'purchase',
+          departmentId: saved.departmentId,
+          sourceType: 'purchase',
+          sourceId: saved.id,
+          partyId: saved.partyId,
+          lineItems: [
+            {
+              description: 'Chicken Purchase',
+              qty: Number(saved.quantityKg),
+              unit: 'kg',
+              rate: Number(saved.ratePerKg),
+              amount: Number(saved.totalAmount),
+            },
+          ],
+          subtotal: Number(saved.totalAmount),
+          totalAmount: Number(saved.totalAmount),
+          notes: saved.notes,
+          issuedAt: new Date(saved.purchaseDate).toISOString(),
+        },
+        createdBy,
+        {
+          type: 'purchase',
+          title: 'Shop Purchase Recorded',
+          message: `Purchase of ${saved.quantityKg}kg recorded`,
+          context: {
+            amount: saved.totalAmount,
+            date: String(saved.purchaseDate),
+            status: saved.status,
+          },
+        },
+        this.logger,
+      );
+    return saved;
+  }
+
+  async findPurchases(filters: SupplyListQueryDto) {
+    const query = this.dataSource
+      .getRepository(ShopPurchase)
+      .createQueryBuilder('purchase')
+      .leftJoinAndSelect('purchase.party', 'party')
+      .leftJoinAndSelect('purchase.vehicle', 'vehicle')
+      .where('purchase.departmentId = :departmentId', {
+        departmentId: this.shopDeptId,
+      })
+      .andWhere('purchase.deletedAt IS NULL')
+      .andWhere('purchase.status = :status', { status: 'posted' });
+    if (filters.from)
+      query.andWhere('purchase.purchaseDate >= :from', { from: filters.from });
+    if (filters.to)
+      query.andWhere('purchase.purchaseDate <= :to', { to: filters.to });
+    if (filters.paymentMethod)
+      query.andWhere('purchase.paymentMethod = :method', {
+        method: filters.paymentMethod,
+      });
+    if (filters.search?.trim())
+      query.andWhere(
+        '(party.name ILIKE :search OR vehicle.registrationNumber ILIKE :search OR purchase.notes ILIKE :search OR CAST(purchase.purchaseDate AS TEXT) ILIKE :search)',
+        { search: `%${filters.search.trim()}%` },
+      );
+    const [items, total] = await query
+      .orderBy('purchase.purchaseDate', 'DESC')
+      .addOrderBy('purchase.id', 'DESC')
+      .skip((filters.page - 1) * filters.limit)
+      .take(filters.limit)
+      .getManyAndCount();
+    return {
+      items,
+      pagination: {
+        page: filters.page,
+        limit: filters.limit,
+        total,
+        totalPages: Math.ceil(total / filters.limit),
+        hasNextPage: filters.page * filters.limit < total,
+        hasPreviousPage: filters.page > 1,
+      },
+    };
+  }
+
+  async updatePurchase(id: string, dto: {purchaseDate?: string; notes?: string}, actorId: string) {
+    return this.dataSource.transaction(async manager => {
+      const purchase = await manager.findOne(ShopPurchase, {where: {id, departmentId: this.shopDeptId, deletedAt: IsNull(), status: 'posted'}, lock: {mode: 'pessimistic_write'}});
+      if (!purchase) throw new NotFoundException('Shop purchase not found');
+      if (dto.purchaseDate) {
+        purchase.purchaseDate = new Date(dto.purchaseDate);
+        await manager.update(LedgerEntry, {sourceType: 'purchase', sourceId: id}, {entryDate: dto.purchaseDate});
+        await manager.update(StockMovement, {sourceType: StockMovementSourceEnum.PURCHASE, sourceId: id}, {movementDate: new Date(dto.purchaseDate)});
+      }
+      if (dto.notes !== undefined) purchase.notes = dto.notes;
+      purchase.updatedBy = actorId;
+      return manager.save(ShopPurchase, purchase);
+    });
+  }
+
+  async deletePurchase(id: string, actorId: string) {
+    return this.dataSource.transaction(async (manager) => {
+      const purchase = await manager.findOne(ShopPurchase, {
+        where: {
+          id,
+          departmentId: this.shopDeptId,
+          deletedAt: IsNull(),
+          status: 'posted',
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!purchase) throw new NotFoundException('Shop purchase not found');
+      await this.inventoryService.reverseSourceMovement(
+        this.shopDeptId,
+        StockMovementSourceEnum.PURCHASE,
+        id,
+        manager,
+      );
+      await this.ledgerService.reverseSource('purchase', id, actorId, manager);
+      purchase.status = 'cancelled';
+      purchase.cancelledAt = new Date();
+      purchase.cancelledBy = actorId;
+      purchase.updatedBy = actorId;
+      await manager.save(ShopPurchase, purchase);
+      await manager.softRemove(ShopPurchase, purchase);
+      return { success: true, message: 'Shop purchase cancelled successfully' };
+    });
   }
 
   async createSale(dto: CreateShopSaleDto, createdBy: string) {
@@ -327,10 +551,34 @@ export class FreshChickenShopService implements OnModuleInit {
       );
     return saved;
   }
-  listStockWriteoffs() { return this.inventoryService.listWriteoffs(this.shopDeptId); }
-  getStockWriteoff(id: string) { return this.inventoryService.getWriteoff(id, this.shopDeptId); }
-  updateStockWriteoff(id: string, dto: any, actorId: string) { return this.dataSource.transaction((manager) => this.inventoryService.updateWriteoff(id, this.shopDeptId, dto, actorId, manager)); }
-  async deleteStockWriteoff(id: string, actorId: string) { await this.dataSource.transaction((manager) => this.inventoryService.deleteWriteoff(id, this.shopDeptId, actorId, manager)); return { success: true }; }
+  listStockWriteoffs() {
+    return this.inventoryService.listWriteoffs(this.shopDeptId);
+  }
+  getStockWriteoff(id: string) {
+    return this.inventoryService.getWriteoff(id, this.shopDeptId);
+  }
+  updateStockWriteoff(id: string, dto: any, actorId: string) {
+    return this.dataSource.transaction((manager) =>
+      this.inventoryService.updateWriteoff(
+        id,
+        this.shopDeptId,
+        dto,
+        actorId,
+        manager,
+      ),
+    );
+  }
+  async deleteStockWriteoff(id: string, actorId: string) {
+    await this.dataSource.transaction((manager) =>
+      this.inventoryService.deleteWriteoff(
+        id,
+        this.shopDeptId,
+        actorId,
+        manager,
+      ),
+    );
+    return { success: true };
+  }
 
   listDressingBatches(query: DressingBatchQueryDto) {
     return this.shopRepository.findBatches(
@@ -504,12 +752,32 @@ export class FreshChickenShopService implements OnModuleInit {
       parseFloat(operatingExpenses) -
       parseFloat(payrollExpenses)
     ).toFixed(2);
-    const [purchaseQuantityKg, saleQuantityKg, shrinkageKg] = await Promise.all([
-      this.shopRepository.sumActiveIncomingQuantity(this.shopDeptId, from, to),
-      this.shopRepository.sumActiveSaleQuantity(from, to),
-      this.inventoryService.sumWriteoffQuantity(this.shopDeptId, fromDate, toDate),
-    ]);
+    const [purchaseQuantityKg, saleQuantityKg, shrinkageKg] = await Promise.all(
+      [
+        this.shopRepository.sumActiveIncomingQuantity(
+          this.shopDeptId,
+          from,
+          to,
+        ),
+        this.shopRepository.sumActiveSaleQuantity(from, to),
+        this.inventoryService.sumWriteoffQuantity(
+          this.shopDeptId,
+          fromDate,
+          toDate,
+        ),
+      ],
+    );
 
-    return { revenue, cogs, operatingExpenses, payrollExpenses, netProfit, purchaseQuantityKg, saleQuantityKg, shrinkageKg };
+    return {
+      revenue,
+      cogs,
+      operatingExpenses,
+      payrollExpenses,
+      netProfit,
+      purchaseQuantityKg,
+      saleQuantityKg,
+      shrinkageKg,
+    };
   }
 }
+

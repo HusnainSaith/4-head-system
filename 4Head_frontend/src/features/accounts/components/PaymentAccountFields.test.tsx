@@ -7,6 +7,7 @@ vi.mock("../accountsApi", () => ({
     data: {
       success: true,
       data: [
+        { account: { id: "retired", accountName: "Brokerage Cash Drawer", isShared: false }, currentBalance: "0.00" },
         {
           account: {
             id: "shared-cash-1",
@@ -44,6 +45,7 @@ describe("PaymentAccountFields", () => {
     render(<CashFields />);
     const drawer = screen.getByLabelText("Cash drawer *");
     expect(screen.getByRole("option", { name: /Admin Cash Drawer/ })).toBeInTheDocument();
+    expect(screen.queryByRole("option", { name: /Brokerage Cash Drawer/ })).not.toBeInTheDocument();
     await waitFor(() => expect(drawer).toHaveValue("shared-cash-1"));
   });
 });

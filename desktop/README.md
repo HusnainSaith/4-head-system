@@ -1,5 +1,38 @@
 # 4Head desktop release
 
+Version 1.0.21 uses one party-balance convention in every department:
+positive is payable to the party; negative is receivable from the party.
+Purchases add to the signed balance, sales subtract, receipts add, and
+payments subtract. Overpayments cross zero into the opposite balance type.
+Receipt postings split receivable repayment from excess payable credit.
+Department party selectors calculate balances from that department's ledger.
+Existing transactions and ledger entries are retained without migrations or seeds.
+
+`scripts/test-local-party-signs.cjs` verifies local balances against the saved
+ledger with database writes blocked. `scripts/verify-party-balance-signs.cjs`
+performs the same read-only reconciliation against the installed desktop app.
+Use `release/4Head-Poultry-ERP-1.0.21-Setup.exe` to install this code-only update.
+
+Version 1.0.16 includes party-name search in the settlement form. The installer
+is `release/4Head-Poultry-ERP-1.0.16-Setup.exe`. Build this application-only
+update with `npm.cmd run dist:update` to preserve the packaged database and uploads.
+The existing desktop database is retained without migrations or seeds.
+Read-only before/after table fingerprints are captured with
+`node scripts/verify-desktop-update-records.cjs --before` and
+`node scripts/verify-desktop-update-records.cjs`.
+
+Version 1.0.15 packages the current local application, including payroll bonus
+report corrections, purchase/sale search, external transactions, and Fresh
+Chicken Shop live-chicken purchases. Use `release/4Head-Poultry-ERP-1.0.15-Setup.exe`
+to install the update, or `release/4Head-Poultry-ERP-1.0.15-portable.exe` directly.
+
+The Brokerage additions were applied separately using only
+`brokerage-parties.seed.ts` in add-only mode. Anwer, Imran sports, Khadam Hussain,
+and Dr Waqas are skipped when they already exist; existing party balances and
+transaction records are not rewritten. The update retains the existing desktop
+database and uploads. The new Shop purchase table is empty until a purchase is
+recorded. General seed runners and the Brokerage reset are not part of this update.
+
 For an application-only update that preserves the existing packaged snapshot:
 
 ```powershell
@@ -10,10 +43,16 @@ npm.cmd run dist:update
 This rebuilds the application without exporting a database or changing uploads.
 It requires an existing prepared runtime. Existing desktop databases are reused;
 application updates do not replace their records, run general migrations, or seed data.
-Required payroll columns and indexes are upgraded separately. The upgrade compares
-SHA-256 fingerprints of every existing column value inside the same transaction
-and rolls back if any original record changes. A full desktop database backup is
-kept under the desktop user-data directory before each new application version.
+Version 1.0.14 also disables automatic schema upgrades on an existing desktop
+database. Existing database directories, records, and uploads are reused.
+A full desktop database backup is kept under the desktop user-data directory
+before each new application version. Application output folders are replaced
+so removed source files are not accidentally included in an update.
+
+Portable launches extract into independent temporary folders. With the pinned
+electron-builder 26.15 implementation, `portable.unpackDirName: true` selects
+the per-launch NSIS `$PLUGINSDIR`; false would generate a shared build folder.
+This prevents a second launch from deleting the first launch's runtime files.
 
 Build from the current frontend, backend, and local PostgreSQL database:
 

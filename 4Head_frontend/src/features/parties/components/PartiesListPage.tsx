@@ -143,12 +143,9 @@ export function PartiesListPage() {
         cell: (party) => {
           const balance = Number(party.currentBalance ?? 0);
           if (balance === 0) return <Badge variant="outline">Zero / Nil</Badge>;
-          const formatted = new Intl.NumberFormat("en-PK").format(
-            Math.abs(balance),
-          );
           return (
-            <span className={balance < 0 ? "text-red-600" : "text-foreground"}>
-              {balance < 0 ? "-" : "+"} {formatted}
+            <span className={balance > 0 ? "text-red-600" : "text-emerald-700"}>
+              {formatPartyBalance(balance)} {partyBalanceLabel(balance)}
             </span>
           );
         },
@@ -336,3 +333,4 @@ export function PartiesListPage() {
     </PageContainer>
   );
 }
+import { formatPartyBalance, partyBalanceLabel } from '../party-balance';

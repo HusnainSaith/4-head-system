@@ -21,6 +21,46 @@ import type {
 
 export const partiesApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({
+    updateStatementAdjustment: builder.mutation<
+      ApiResponse<null>,
+      {
+        id: string;
+        entryId: string;
+        body: {
+          date: string;
+          amount: number;
+          entryType: "debit" | "credit";
+          notes?: string;
+        };
+      }
+    >({
+      query: ({ id, entryId, body }) => ({
+        url: `/parties/${id}/statement-adjustments/${entryId}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: [
+        "Party",
+        "PartyStatement",
+        "DepartmentBalance",
+        "ConsolidatedReport",
+      ],
+    }),
+    deleteStatementAdjustment: builder.mutation<
+      ApiResponse<null>,
+      { id: string; entryId: string }
+    >({
+      query: ({ id, entryId }) => ({
+        url: `/parties/${id}/statement-adjustments/${entryId}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: [
+        "Party",
+        "PartyStatement",
+        "DepartmentBalance",
+        "ConsolidatedReport",
+      ],
+    }),
     listDepartmentPayments: builder.query<
       ApiResponse<{
         items: import("./types").DepartmentPayment[];
@@ -56,7 +96,11 @@ export const partiesApi = apiSlice.injectEndpoints({
     }),
     createParty: builder.mutation<PartyResponse, CreatePartyRequest>({
       query: (body) => ({ url: "/parties", method: "POST", body }),
-      invalidatesTags: [{ type: "Party", id: "LIST" }],
+      invalidatesTags: [
+        { type: "Party", id: "LIST" },
+        { type: "DepartmentBalance", id: "LIST" },
+        { type: "ConsolidatedReport" },
+      ],
     }),
     updateParty: builder.mutation<
       PartyResponse,
@@ -84,6 +128,9 @@ export const partiesApi = apiSlice.injectEndpoints({
       invalidatesTags: (_result, _error, { id }) => [
         { type: "Party", id },
         { type: "Party", id: "LIST" },
+        { type: "PartyStatement", id },
+        { type: "DepartmentBalance", id: "LIST" },
+        { type: "ConsolidatedReport" },
       ],
     }),
     deleteParty: builder.mutation<DeletePartyResponse, string>({
@@ -132,7 +179,7 @@ export const partiesApi = apiSlice.injectEndpoints({
     }),
     updatePartyPayment: builder.mutation<
       RecordPaymentResponse,
-      { id: string; paymentId: string; body: RecordPaymentRequest }
+      { id: string; paymentId: string; body: Partial<RecordPaymentRequest> }
     >({
       query: ({ id, paymentId, body }) => ({
         url: `/parties/${id}/payments/${paymentId}`,
@@ -143,6 +190,10 @@ export const partiesApi = apiSlice.injectEndpoints({
         { type: "Party", id },
         { type: "PartyStatement", id },
         { type: "DepartmentBalance", id: "LIST" },
+        { type: "Account", id: "CASH" },
+        { type: "Account", id: "BANK" },
+        { type: "Account", id: "SUMMARY" },
+        { type: "ConsolidatedReport", id: "PROFIT_LOSS" },
       ],
     }),
     deletePartyPayment: builder.mutation<
@@ -302,6 +353,8 @@ export const partiesApi = apiSlice.injectEndpoints({
 });
 
 export const {
+  useUpdateStatementAdjustmentMutation,
+  useDeleteStatementAdjustmentMutation,
   useListDepartmentPaymentsQuery,
   useListPartiesQuery,
   useGetPartyQuery,

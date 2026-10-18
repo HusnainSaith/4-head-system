@@ -1,3 +1,5 @@
+import { StockMovement } from '../inventory/entities/stock-movement.entity';
+import { LedgerEntry } from '../ledger/entities/ledger-entry.entity';
 import {
   Injectable,
   OnModuleInit,
@@ -264,12 +266,12 @@ export class BrokerageService implements OnModuleInit {
     return purchase;
   }
 
-  async updatePurchase(id: string, dto: Partial<CreateBrokeragePurchaseDto>) {
-    return this.brokerageRepository.updatePurchase(id, {
-      ...dto,
-      quantityKg: dto.quantityKg?.toFixed(3),
-      ratePerKg: dto.ratePerKg?.toFixed(2),
-    } as any);
+  async updatePurchase(
+    id: string,
+    dto: Partial<CreateBrokeragePurchaseDto>,
+    actorId?: string,
+  ) {
+    return this.editTransaction('purchase', id, dto, actorId);
   }
 
   async deletePurchase(id: string, actorId: string) {
@@ -311,31 +313,30 @@ export class BrokerageService implements OnModuleInit {
   }
 
   async createSale(dto: CreateBrokerageSaleDto, createdBy: string) {
+    if (
+      dto.destinationType &&
+      dto.destinationType !== BrokerageSaleDestination.EXTERNAL
+    )
+      throw new BadRequestException(
+        'Internal transfers are no longer supported',
+      );
     this.ensureBrokerageDepartment();
     const saved = await this.dataSource.transaction(async (manager) => {
       await this.validateVehicle(dto.vehicleId, manager);
-      const isSupplyTransfer =
-        dto.destinationType === BrokerageSaleDestination.SUPPLY;
-      const [supplyParty, brokerageParty] = isSupplyTransfer
-        ? await Promise.all([
-            this.requireInternalParty(manager, this.supplyDepartmentId),
-            this.requireInternalParty(manager, this.brokerageDepartmentId),
-          ])
-        : [undefined, undefined];
       const totalAmount = (dto.quantityKg * dto.ratePerKg).toFixed(2);
       const payment = resolveTransactionPayment({
         totalAmount,
         enteredAmount: dto.amountReceived,
         paymentMethod: dto.paymentMethod,
         ...paymentAccountLink(dto),
-        partyId: isSupplyTransfer ? supplyParty?.id : dto.partyId,
+        partyId: dto.partyId,
         amountLabel: 'Amount received',
       });
 
       // Save the sale first so we have its ID for the stock movement
       const sale = manager.create(BrokerageSale, {
         departmentId: this.brokerageDepartmentId,
-        partyId: isSupplyTransfer ? supplyParty?.id : dto.partyId,
+        partyId: dto.partyId,
         vehicleId: dto.vehicleId,
         quantityKg: dto.quantityKg.toFixed(3),
         ratePerKg: dto.ratePerKg.toFixed(2),
@@ -415,81 +416,6 @@ export class BrokerageService implements OnModuleInit {
         });
       await this.ledgerService.post(entries, manager);
 
-      if (isSupplyTransfer) {
-        const supplyPurchase = await manager.save(
-          SupplyPurchase,
-          manager.create(SupplyPurchase, {
-            departmentId: this.supplyDepartmentId,
-            partyId: brokerageParty?.id,
-            quantityKg: dto.quantityKg.toFixed(3),
-            ratePerKg: dto.ratePerKg.toFixed(2),
-            totalAmount,
-            paymentMethod: dto.paymentMethod,
-            amountPaid: payment.settledAmount,
-            outstandingAmount: payment.outstandingAmount,
-            purchaseDate: new Date(dto.saleDate),
-            vehicleId: dto.vehicleId,
-            status: 'posted',
-            notes:
-              dto.description ??
-              `Automatically received from Brokerage sale ${savedSale.id}`,
-            sourceBrokerageSaleId: savedSale.id,
-            createdBy,
-            updatedBy: createdBy,
-          } as Partial<SupplyPurchase>),
-        );
-
-        await this.inventoryService.applyPurchaseIn(
-          this.supplyDepartmentId,
-          dto.quantityKg,
-          dto.ratePerKg,
-          StockMovementSourceEnum.INTERNAL_TRANSFER,
-          supplyPurchase.id,
-          new Date(dto.saleDate),
-          manager,
-        );
-        const supplyEntries: PostEntryDto[] = [
-          {
-            departmentId: this.supplyDepartmentId,
-            accountCode: 'inventory',
-            entryType: 'debit',
-            amount: totalAmount,
-            entryDate: new Date(dto.saleDate),
-            sourceType: 'internal_transfer',
-            sourceId: supplyPurchase.id,
-            description: `Inventory received from Brokerage sale ${savedSale.id}`,
-            createdBy,
-          },
-        ];
-        if (payment.settledValue > 0)
-          supplyEntries.push({
-            departmentId: this.supplyDepartmentId,
-            accountCode: dto.paymentMethod === 'bank' ? 'bank' : 'cash',
-            ...paymentAccountLink(dto),
-            entryType: 'credit',
-            amount: payment.settledAmount,
-            entryDate: new Date(dto.saleDate),
-            sourceType: 'internal_transfer',
-            sourceId: supplyPurchase.id,
-            description: `Payment to Brokerage for sale ${savedSale.id}`,
-            createdBy,
-          });
-        if (payment.outstandingValue > 0)
-          supplyEntries.push({
-            departmentId: this.supplyDepartmentId,
-            accountCode: 'accounts_payable',
-            partyId: brokerageParty?.id,
-            entryType: 'credit',
-            amount: payment.outstandingAmount,
-            entryDate: new Date(dto.saleDate),
-            sourceType: 'internal_transfer',
-            sourceId: supplyPurchase.id,
-            description: `Payable for Brokerage sale ${savedSale.id}`,
-            createdBy,
-          });
-        await this.ledgerService.post(supplyEntries, manager);
-      }
-
       return savedSale;
     });
     if (this.invoicesService && this.notificationsService)
@@ -546,17 +472,241 @@ export class BrokerageService implements OnModuleInit {
     return sale;
   }
 
-  async updateSale(id: string, dto: Partial<CreateBrokerageSaleDto>) {
-    const sale = await this.findSaleById(id);
-    if (sale.destinationType === BrokerageSaleDestination.SUPPLY)
-      throw new ConflictException(
-        'A posted Brokerage-to-Supply transfer cannot be edited; cancel and recreate it',
+  async updateSale(
+    id: string,
+    dto: Partial<CreateBrokerageSaleDto>,
+    actorId?: string,
+  ) {
+    return this.editTransaction('sale', id, dto, actorId);
+  }
+
+  private async editTransaction(
+    kind: 'purchase' | 'sale',
+    id: string,
+    dto: Partial<CreateBrokeragePurchaseDto & CreateBrokerageSaleDto>,
+    actorId?: string,
+  ) {
+    this.ensureBrokerageDepartment();
+    return this.dataSource.transaction(async (manager) => {
+      const entity = kind === 'purchase' ? BrokeragePurchase : BrokerageSale;
+      const record = await manager.findOne<BrokeragePurchase | BrokerageSale>(
+        entity,
+        { where: { id }, lock: { mode: 'pessimistic_write' } },
       );
-    return this.brokerageRepository.updateSale(id, {
-      ...dto,
-      quantityKg: dto.quantityKg?.toFixed(3),
-      ratePerKg: dto.ratePerKg?.toFixed(2),
-    } as any);
+      if (!record)
+        throw new NotFoundException('Brokerage transaction not found');
+      if (record.status === 'cancelled')
+        throw new ConflictException('Cancelled transactions cannot be edited');
+      if (record.departmentId !== this.brokerageDepartmentId)
+        throw new BadRequestException(
+          'Transaction belongs to another department',
+        );
+      const current = record as unknown as Omit<BrokeragePurchase, 'status'> &
+        Omit<BrokerageSale, 'status'>;
+      if (
+        kind === 'sale' &&
+        current.destinationType === BrokerageSaleDestination.SUPPLY
+      )
+        throw new ConflictException(
+          'Cancel the source internal transfer instead of editing it',
+        );
+      const quantity = dto.quantityKg ?? Number(current.quantityKg);
+      const rate = dto.ratePerKg ?? Number(current.ratePerKg);
+      if (
+        !Number.isFinite(quantity) ||
+        !Number.isFinite(rate) ||
+        quantity <= 0 ||
+        rate <= 0
+      )
+        throw new BadRequestException(
+          'Weight and rate must be positive numbers',
+        );
+      const date = new Date(
+        kind === 'purchase'
+          ? (dto.purchaseDate ?? current.purchaseDate)
+          : (dto.saleDate ?? current.saleDate),
+      );
+      if (Number.isNaN(date.getTime()))
+        throw new BadRequestException('Transaction date is invalid');
+      await this.validateVehicle(dto.vehicleId ?? current.vehicleId, manager);
+      const method = dto.paymentMethod ?? current.paymentMethod;
+      const partyId = dto.partyId ?? current.partyId;
+      const dateOnly = Object.keys(dto).every(
+        (key) => key === (kind === 'purchase' ? 'purchaseDate' : 'saleDate'),
+      );
+      const selection = dateOnly
+        ? {}
+        : paymentAccountLink({
+            paymentMethod: method,
+            cashAccountId:
+              method === 'cash'
+                ? (dto.cashAccountId ??
+                  (await this.ledgerService.getAdminCashAccountId(manager)))
+                : undefined,
+            bankAccountId:
+              method === 'bank'
+                ? (dto.bankAccountId ?? current.bankAccountId)
+                : undefined,
+            bankTransactionMethod:
+              dto.bankTransactionMethod ?? current.bankTransactionMethod,
+            chequeNumber: dto.chequeNumber ?? current.chequeNumber,
+            appReference: dto.appReference ?? current.appReference,
+          });
+      const total = (quantity * rate).toFixed(2);
+      const payment = resolveTransactionPayment({
+        totalAmount: total,
+        enteredAmount:
+          kind === 'purchase'
+            ? (dto.amountPaid ?? Number(current.amountPaid))
+            : (dto.amountReceived ?? Number(current.amountReceived)),
+        paymentMethod: method,
+        partyId,
+        amountLabel: kind === 'purchase' ? 'Amount paid' : 'Amount received',
+      });
+      if (kind === 'purchase' && !dateOnly) {
+        const linked = await manager.findOne(InvestmentAssignment, {
+          where: [
+            { purchaseId: id, status: InvestmentAssignmentStatus.ACTIVE },
+            { purchaseId: id, status: InvestmentAssignmentStatus.SETTLED },
+          ],
+        });
+        if (linked)
+          throw new ConflictException(
+            'Cancel the linked investment assignment before editing this purchase',
+          );
+      }
+      const source =
+        kind === 'purchase'
+          ? StockMovementSourceEnum.PURCHASE
+          : StockMovementSourceEnum.SALE;
+      if (
+        quantity !== Number(current.quantityKg) ||
+        (kind === 'purchase' && rate !== Number(current.ratePerKg))
+      ) {
+        await this.inventoryService.reverseSourceMovement(
+          this.brokerageDepartmentId,
+          source,
+          id,
+          manager,
+        );
+        await manager.delete(StockMovement, {
+          departmentId: this.brokerageDepartmentId,
+          sourceType: source,
+          sourceId: id,
+        });
+        if (kind === 'purchase')
+          await this.inventoryService.applyPurchaseIn(
+            this.brokerageDepartmentId,
+            quantity,
+            rate,
+            source,
+            id,
+            date,
+            manager,
+          );
+        else {
+          const { currentWac } = await this.inventoryService.applySaleOut(
+            this.brokerageDepartmentId,
+            quantity,
+            source,
+            id,
+            date,
+            manager,
+          );
+          current.commissionPerKg = (rate - currentWac).toFixed(2);
+          current.commissionAmount = ((rate - currentWac) * quantity).toFixed(
+            2,
+          );
+        }
+      } else
+        await manager.update(
+          StockMovement,
+          { sourceType: source, sourceId: id },
+          { movementDate: date },
+        );
+      if (dateOnly)
+        await manager.update(
+          LedgerEntry,
+          { sourceType: kind, sourceId: id },
+          { entryDate: date.toISOString().slice(0, 10) },
+        );
+      else {
+        await this.ledgerService.reverseSource(kind, id, actorId, manager);
+        const base = {
+          departmentId: this.brokerageDepartmentId,
+          sourceType: kind,
+          sourceId: id,
+          entryDate: date,
+          createdBy: actorId,
+          description: dto.description ?? current.description,
+        };
+        const entries: PostEntryDto[] = [
+          {
+            ...base,
+            accountCode: kind === 'purchase' ? 'cogs' : 'revenue',
+            entryType: kind === 'purchase' ? 'debit' : 'credit',
+            amount: total,
+          },
+        ];
+        if (payment.settledValue > 0)
+          entries.push({
+            ...base,
+            ...selection,
+            accountCode: method === 'bank' ? 'bank' : 'cash',
+            entryType: kind === 'purchase' ? 'credit' : 'debit',
+            amount: payment.settledAmount,
+          });
+        if (payment.outstandingValue > 0)
+          entries.push({
+            ...base,
+            partyId,
+            accountCode:
+              kind === 'purchase' ? 'accounts_payable' : 'accounts_receivable',
+            entryType: kind === 'purchase' ? 'credit' : 'debit',
+            amount: payment.outstandingAmount,
+          });
+        await this.ledgerService.post(entries, manager);
+      }
+      if (
+        kind === 'sale' &&
+        quantity === Number(current.quantityKg) &&
+        rate !== Number(current.ratePerKg)
+      ) {
+        const costRate =
+          Number(current.ratePerKg) - Number(current.commissionPerKg);
+        current.commissionPerKg = (rate - costRate).toFixed(2);
+        current.commissionAmount = ((rate - costRate) * quantity).toFixed(2);
+      }
+      Object.assign(record, {
+        quantityKg: quantity.toFixed(3),
+        ratePerKg: rate.toFixed(2),
+        totalAmount: total,
+        outstandingAmount: payment.outstandingAmount,
+        paymentMethod: method,
+        partyId,
+        ...(dateOnly
+          ? {}
+          : {
+              cashAccountId: null,
+              bankAccountId: null,
+              bankTransactionMethod: null,
+              chequeNumber: null,
+              appReference: null,
+              ...selection,
+            }),
+        updatedBy: actorId,
+        ...(dto.vehicleId !== undefined ? { vehicleId: dto.vehicleId } : {}),
+        ...(dto.description !== undefined
+          ? { description: dto.description }
+          : {}),
+        ...(kind === 'purchase'
+          ? { amountPaid: payment.settledAmount, purchaseDate: date }
+          : { amountReceived: payment.settledAmount, saleDate: date }),
+      });
+      return kind === 'purchase'
+        ? manager.save(BrokeragePurchase, record as BrokeragePurchase)
+        : manager.save(BrokerageSale, record as BrokerageSale);
+    });
   }
 
   async deleteSale(id: string, actorId: string) {
@@ -663,10 +813,38 @@ export class BrokerageService implements OnModuleInit {
       );
     return savedWriteoff;
   }
-  listStockWriteoffs() { this.ensureBrokerageDepartment(); return this.inventoryService.listWriteoffs(this.brokerageDepartmentId); }
-  getStockWriteoff(id: string) { this.ensureBrokerageDepartment(); return this.inventoryService.getWriteoff(id, this.brokerageDepartmentId); }
-  updateStockWriteoff(id: string, dto: any, actorId: string) { this.ensureBrokerageDepartment(); return this.dataSource.transaction((manager) => this.inventoryService.updateWriteoff(id, this.brokerageDepartmentId, dto, actorId, manager)); }
-  async deleteStockWriteoff(id: string, actorId: string) { this.ensureBrokerageDepartment(); await this.dataSource.transaction((manager) => this.inventoryService.deleteWriteoff(id, this.brokerageDepartmentId, actorId, manager)); return { success: true }; }
+  listStockWriteoffs() {
+    this.ensureBrokerageDepartment();
+    return this.inventoryService.listWriteoffs(this.brokerageDepartmentId);
+  }
+  getStockWriteoff(id: string) {
+    this.ensureBrokerageDepartment();
+    return this.inventoryService.getWriteoff(id, this.brokerageDepartmentId);
+  }
+  updateStockWriteoff(id: string, dto: any, actorId: string) {
+    this.ensureBrokerageDepartment();
+    return this.dataSource.transaction((manager) =>
+      this.inventoryService.updateWriteoff(
+        id,
+        this.brokerageDepartmentId,
+        dto,
+        actorId,
+        manager,
+      ),
+    );
+  }
+  async deleteStockWriteoff(id: string, actorId: string) {
+    this.ensureBrokerageDepartment();
+    await this.dataSource.transaction((manager) =>
+      this.inventoryService.deleteWriteoff(
+        id,
+        this.brokerageDepartmentId,
+        actorId,
+        manager,
+      ),
+    );
+    return { success: true };
+  }
 
   async getProfitLoss(from?: string, to?: string) {
     this.ensureBrokerageDepartment();
@@ -676,7 +854,10 @@ export class BrokerageService implements OnModuleInit {
     // Transaction tables are authoritative for operational P&L. Historical
     // ledgers may contain duplicated postings from imports or retries.
     const revenue = await this.brokerageRepository.sumActiveSaleTotal(from, to);
-    const cogs = await this.brokerageRepository.sumActivePurchaseTotal(from, to);
+    const cogs = await this.brokerageRepository.sumActivePurchaseTotal(
+      from,
+      to,
+    );
     const operatingExpenses = this.expensesService
       ? await this.expensesService.sumTotal(
           this.brokerageDepartmentId,
@@ -704,11 +885,17 @@ export class BrokerageService implements OnModuleInit {
       parseFloat(operatingExpenses) -
       parseFloat(payrollExpenses)
     ).toFixed(2);
-    const [purchaseQuantityKg, saleQuantityKg, shrinkageKg] = await Promise.all([
-      this.brokerageRepository.sumActivePurchaseQuantity(from, to),
-      this.brokerageRepository.sumActiveSaleQuantity(from, to),
-      this.inventoryService.sumWriteoffQuantity(this.brokerageDepartmentId, fromDate, toDate),
-    ]);
+    const [purchaseQuantityKg, saleQuantityKg, shrinkageKg] = await Promise.all(
+      [
+        this.brokerageRepository.sumActivePurchaseQuantity(from, to),
+        this.brokerageRepository.sumActiveSaleQuantity(from, to),
+        this.inventoryService.sumWriteoffQuantity(
+          this.brokerageDepartmentId,
+          fromDate,
+          toDate,
+        ),
+      ],
+    );
 
     return {
       revenue,

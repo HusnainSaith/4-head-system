@@ -67,7 +67,6 @@ const navigation = [
     children: [
       { label: "Purchases", to: "/supply/purchases" },
       { label: "Sales", to: "/supply/sales" },
-      { label: "Internal Transfers", to: "/supply/internal-transfers" },
       { label: "Stock", to: "/supply/stock" },
       { label: "Reports", to: "/supply/reports/profit-loss" },
     ],
@@ -90,7 +89,7 @@ const navigation = [
     icon: Store,
     department: DepartmentCode.FRESH_CHICKEN_SHOP,
     children: [
-      { label: "Incoming Transfers", to: "/shop/incoming-transfers" },
+      { label: "Purchases", to: "/shop/purchases" },
       { label: "Dressing Batches", to: "/shop/dressing-batches" },
       { label: "Sales", to: "/shop/sales" },
       { label: "Stock", to: "/shop/stock" },
@@ -159,6 +158,7 @@ const navigation = [
     to: "/reports/consolidated-profit-loss",
     icon: FileText,
     children: [
+      { label: "Day Book", to: "/reports/day-book", managementOnly: true },
       { label: "Consolidated P&L", to: "/reports/consolidated-profit-loss" },
       { label: "Partner Profit Share", to: "/reports/partner-profit-share" },
       { label: "Outstanding Balances", to: "/reports/outstanding-balances" },

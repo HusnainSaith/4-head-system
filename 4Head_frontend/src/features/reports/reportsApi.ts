@@ -1,3 +1,4 @@
+import type { DayBookParams, DayBookReport } from './day-book-types';
 import { apiSlice } from "@/store/apiSlice";
 import type { ApiResponse } from "@/types/api";
 import type {
@@ -11,11 +12,14 @@ import type {
 } from "./types";
 const common = {
   providesTags: ["ConsolidatedReport" as const],
-  keepUnusedDataFor: 5,
-  refetchOnMountOrArgChange: true as const,
+  keepUnusedDataFor: 60,
+  refetchOnMountOrArgChange: 30,
 };
 export const reportsApi = apiSlice.injectEndpoints({
   endpoints: (b) => ({
+    getDayBook: b.query<ApiResponse<DayBookReport>,DayBookParams>({
+      query: params=>({url:'/reports/day-book',params}), providesTags:['ConsolidatedReport'],keepUnusedDataFor:60,
+    }),
     postPartnerProfit: b.mutation<
       ApiResponse<{ changed: boolean; message: string }>,
       {
@@ -112,6 +116,7 @@ export const reportsApi = apiSlice.injectEndpoints({
   }),
 });
 export const {
+  useGetDayBookQuery,
   usePostPartnerProfitMutation,
   useSavePartnerSharesMutation,
   useGetConsolidatedProfitLossQuery,

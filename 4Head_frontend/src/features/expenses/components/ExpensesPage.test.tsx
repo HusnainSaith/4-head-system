@@ -77,6 +77,12 @@ describe("ExpensesPage", () => {
       1,
     );
   });
+  it("includes active system categories in the manual expense selector", () => {
+    render(<MemoryRouter><ExpensesPage /></MemoryRouter>);
+    fireEvent.click(screen.getByRole("button", { name: /add manual expense/i }));
+    fireEvent.click(screen.getByLabelText("Category"));
+    expect(screen.getByRole("option", { name: "Vehicle Fuel" })).toBeInTheDocument();
+  });
   it("hides category management from staff and submits no source field", async () => {
     role = Role.DEPARTMENT_STAFF;
     create.mockReturnValue({ unwrap: () => Promise.resolve({}) });

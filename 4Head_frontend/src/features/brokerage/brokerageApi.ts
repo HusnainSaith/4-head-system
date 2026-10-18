@@ -28,6 +28,11 @@ const cleanParams = <T extends Record<string, unknown>>(
   ) as Partial<T>;
 
 const refreshTransactionState = [
+  { type: "PartyStatement" as const },
+  { type: "Party" as const },
+  { type: "Account" as const, id: "CASH" },
+  { type: "Account" as const, id: "BANK" },
+  { type: "Account" as const, id: "SUMMARY" },
   { type: "BrokerageStock" as const, id: "CURRENT" },
   { type: "BrokerageReport" as const, id: "PROFIT_LOSS" },
   { type: "BrokerageStockMovement" as const, id: "LIST" },
@@ -171,9 +176,39 @@ export const brokerageApi = apiSlice.injectEndpoints({
         { type: "Expense", id: "LIST" },
       ],
     }),
-    listBrokerageStockWriteoffs: builder.query<ApiResponse<StockWriteoffResponse[]>, void>({ query: () => "/brokerage/stock/writeoffs", providesTags: [{ type: "BrokerageStock", id: "WRITEOFFS" }] }),
-    updateBrokerageStockWriteoff: builder.mutation<ApiResponse<StockWriteoffResponse>, { id: string; body: StockWriteoffRequest }>({ query: ({ id, body }) => ({ url: `/brokerage/stock/writeoffs/${id}`, method: "PATCH", body }), invalidatesTags: [...refreshTransactionState, { type: "BrokerageStock", id: "WRITEOFFS" }, { type: "Expense", id: "LIST" }] }),
-    deleteBrokerageStockWriteoff: builder.mutation<ApiResponse<void>, string>({ query: (id) => ({ url: `/brokerage/stock/writeoffs/${id}`, method: "DELETE" }), invalidatesTags: [...refreshTransactionState, { type: "BrokerageStock", id: "WRITEOFFS" }, { type: "Expense", id: "LIST" }] }),
+    listBrokerageStockWriteoffs: builder.query<
+      ApiResponse<StockWriteoffResponse[]>,
+      void
+    >({
+      query: () => "/brokerage/stock/writeoffs",
+      providesTags: [{ type: "BrokerageStock", id: "WRITEOFFS" }],
+    }),
+    updateBrokerageStockWriteoff: builder.mutation<
+      ApiResponse<StockWriteoffResponse>,
+      { id: string; body: StockWriteoffRequest }
+    >({
+      query: ({ id, body }) => ({
+        url: `/brokerage/stock/writeoffs/${id}`,
+        method: "PATCH",
+        body,
+      }),
+      invalidatesTags: [
+        ...refreshTransactionState,
+        { type: "BrokerageStock", id: "WRITEOFFS" },
+        { type: "Expense", id: "LIST" },
+      ],
+    }),
+    deleteBrokerageStockWriteoff: builder.mutation<ApiResponse<void>, string>({
+      query: (id) => ({
+        url: `/brokerage/stock/writeoffs/${id}`,
+        method: "DELETE",
+      }),
+      invalidatesTags: [
+        ...refreshTransactionState,
+        { type: "BrokerageStock", id: "WRITEOFFS" },
+        { type: "Expense", id: "LIST" },
+      ],
+    }),
     getBrokerageProfitLoss: builder.query<
       ApiResponse<BrokerageProfitLoss>,
       ProfitLossParams | void

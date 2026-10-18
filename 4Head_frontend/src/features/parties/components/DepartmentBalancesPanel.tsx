@@ -58,7 +58,7 @@ export function DepartmentBalancesPanel({
           value={
             query.isLoading
               ? "…"
-              : money.format(Number(data?.totalReceivable ?? 0))
+              : formatPartyBalance(-Number(data?.totalReceivable ?? 0))
           }
           delta="Department receives from parties"
           trend={Number(data?.totalReceivable ?? 0) > 0 ? "up" : "neutral"}
@@ -69,7 +69,7 @@ export function DepartmentBalancesPanel({
           value={
             query.isLoading
               ? "…"
-              : money.format(Number(data?.totalPayable ?? 0))
+              : formatPartyBalance(Number(data?.totalPayable ?? 0))
           }
           delta="Department owes parties"
           trend={Number(data?.totalPayable ?? 0) > 0 ? "down" : "neutral"}
@@ -269,10 +269,12 @@ function DepartmentPaymentDialog({
             />
             {selected ? (
               <p className="text-xs text-muted-foreground">
-                Current balance: {Number(selected.balance) >= 0 ? "+" : "-"}
-                {money.format(available)}
+                Current balance: {formatPartyBalance(selected.balance)} {partyBalanceLabel(selected.balance)}
               </p>
             ) : null}
+            {selected && Number(amount) > 0 ? <p className="text-xs text-muted-foreground">
+              Balance after {direction === 'received' ? 'receipt' : 'payment'}: {formatPartyBalance(Number(selected.balance) + (direction === 'received' ? 1 : -1) * Number(amount))} {partyBalanceLabel(Number(selected.balance) + (direction === 'received' ? 1 : -1) * Number(amount))}
+            </p> : null}
             {isAdvancePayment ? (
               <p className="text-xs text-amber-700">
                 This is an additional payment/advance. Cash or bank decreases and
@@ -283,7 +285,7 @@ function DepartmentPaymentDialog({
               <p className="text-xs text-amber-700">
                 {Number(selected?.balance ?? 0) > 0
                   ? `The payable balance will increase from ${money.format(available)} to ${money.format(available + Number(amount))} after this receipt.`
-                  : `The full ${money.format(Number(amount))} will be added as advance credit to the party's account.`}
+                  : `This receipt clears ${money.format(Math.min(available, Number(amount)))} of receivable; ${formatPartyBalance(Number(amount) - available)} becomes payable (advance credit).`}
               </p>
             ) : null}
           </div>
@@ -337,3 +339,4 @@ function DepartmentPaymentDialog({
     </Dialog>
   );
 }
+import { formatPartyBalance, partyBalanceLabel } from '../party-balance';

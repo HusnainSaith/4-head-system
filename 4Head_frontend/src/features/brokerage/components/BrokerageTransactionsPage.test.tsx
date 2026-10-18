@@ -1,3 +1,13 @@
+vi.mock("@/features/departments/departmentsApi", () => ({
+  useListDepartmentsQuery: () => ({
+    data: {
+      data: [
+        { id: "brokerage-dept", type: "BROKERAGE" },
+        { id: "d1", type: "WASTAGE" },
+      ],
+    },
+  }),
+}));
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { Role } from "@/types/enums";
 import { PartyType } from "@/features/parties/types";
@@ -13,6 +23,8 @@ vi.mock("@/features/accounts/components", () => ({
   PaymentAccountFields: () => null,
 }));
 
+const listPurchases = vi.fn();
+const listSales = vi.fn();
 const createPurchase = vi.fn();
 const createSale = vi.fn();
 
@@ -25,7 +37,7 @@ vi.mock("sonner", () => ({
 }));
 vi.mock("@/features/parties/partiesApi", () => ({
   useListPartiesQuery: ({ type }: { type: PartyType }) => ({
-    data: {
+    currentData: {
       data: {
         items:
           type === PartyType.BROKER
@@ -48,9 +60,11 @@ vi.mock("@/features/invoices/components/InvoiceButton", () => ({
   InvoiceButton: () => null,
 }));
 vi.mock("../brokerageApi", () => ({
-  useListBrokeragePurchasesQuery: () => ({
+  useListBrokeragePurchasesQuery: (args:unknown) => (listPurchases(args), {
     data: {
       data: {
+        summary:{totalAmount:"9000.00",settled:"1000.00",outstanding:"8000.00"},
+        pagination:{page:1,limit:20,total:45,totalPages:3,hasNextPage:true,hasPreviousPage:false},
         items: [
           {
             id: "purchase-1",
@@ -70,9 +84,11 @@ vi.mock("../brokerageApi", () => ({
     isLoading: false,
     isError: false,
   }),
-  useListBrokerageSalesQuery: () => ({
+  useListBrokerageSalesQuery: (args:unknown) => (listSales(args), {
     data: {
       data: {
+        summary:{totalAmount:"9000.00",settled:"1000.00",outstanding:"8000.00"},
+        pagination:{page:1,limit:20,total:45,totalPages:3,hasNextPage:true,hasPreviousPage:false},
         items: [
           {
             id: "sale-1",
@@ -142,7 +158,7 @@ describe("Brokerage transaction balances", () => {
     "allows a broker party in a Brokerage %s",
     async (kind, buttonName, partyLabel) => {
       render(<BrokerageTransactionsPage kind={kind} />);
-    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
+      expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
 
       fireEvent.click(screen.getByRole("button", { name: buttonName }));
       fireEvent.click(screen.getByLabelText(partyLabel));
@@ -174,37 +190,25 @@ describe("Brokerage transaction balances", () => {
     );
   });
 
-  it("records a Supply destination with an initial received amount", async () => {
-    createSale.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+  it("offers only external buyers and supports party search", () => {
     render(<BrokerageTransactionsPage kind="sale" />);
-    expect(screen.getByText("Saved transaction note")).toBeInTheDocument();
-
     fireEvent.click(screen.getByRole("button", { name: /record sale/i }));
-    fireEvent.click(screen.getAllByRole("combobox")[0]);
-    fireEvent.click(
-      await screen.findByRole("option", {
-        name: /supply department \(automatic transfer\)/i,
-      }),
-    );
-
-    expect(screen.queryByLabelText("Buyer")).not.toBeInTheDocument();
-    expect(screen.getByLabelText("Amount received")).toBeInTheDocument();
-    const numbers = screen.getAllByRole("spinbutton");
-    fireEvent.change(numbers[0], { target: { value: "12" } });
-    fireEvent.change(numbers[1], { target: { value: "325" } });
-    fireEvent.change(numbers[2], { target: { value: "900" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save" }));
-
-    await waitFor(() =>
-      expect(createSale).toHaveBeenCalledWith(
-        expect.objectContaining({
-          destinationType: "supply",
-          quantityKg: 12,
-          ratePerKg: 325,
-          paymentMethod: "credit",
-          amountReceived: 900,
-        }),
-      ),
-    );
+    expect(screen.queryByText(/automatic transfer/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText("Buyer (Customer or Broker)"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Search parties" }),
+    ).toBeInTheDocument();
   });
+});
+
+it.each(['purchase','sale'] as const)('sends the %s date to the server, resets pagination and uses full-filter totals',async kind=>{
+ const spy=kind==='sale'?listSales:listPurchases;spy.mockClear();render(<BrokerageTransactionsPage kind={kind}/>);
+ fireEvent.click(screen.getByRole('button',{name:/next/i}));expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({page:2}));
+ fireEvent.change(screen.getByLabelText('Filter transactions by date'),{target:{value:'2026-10-12'}});
+ expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({page:1,from:'2026-10-12',to:'2026-10-12',limit:20}));
+ expect(screen.getByText(/9,000/)).toBeInTheDocument();
+ fireEvent.change(screen.getByRole('textbox',{name:'Search transactions'}),{target:{value:'Buyer'}});
+ await waitFor(()=>expect(spy).toHaveBeenLastCalledWith(expect.objectContaining({search:'Buyer',page:1})));
 });

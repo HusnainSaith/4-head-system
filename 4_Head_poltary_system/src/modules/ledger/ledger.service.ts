@@ -4,6 +4,7 @@ import { centsToMoney, moneyToCents } from '../../common/utils/money.util';
 import { EntityManager } from 'typeorm';
 import { LedgerRepository } from './ledger.repository';
 import { LedgerEntry } from './entities/ledger-entry.entity';
+import { BadRequestException } from '@nestjs/common';
 
 export interface PostEntryDto {
   departmentId: string;
@@ -30,7 +31,15 @@ export class LedgerService {
     @Optional() private readonly reports?: ReportsService,
   ) {}
 
-  async post(entries: PostEntryDto[], manager?: EntityManager): Promise<void> {
+  getAdminCashAccountId(manager?: EntityManager) {
+    return this.ledgerRepo.adminCashAccountId(manager);
+  }
+
+  async post(
+    entries: PostEntryDto[],
+    manager?: EntityManager,
+    preserveHistoricalCash = false,
+  ): Promise<void> {
     const debitCents = entries
       .filter((entry) => entry.entryType === 'debit')
       .reduce((sum, entry) => sum + this.toCents(entry.amount), 0);
@@ -43,6 +52,24 @@ export class LedgerService {
       );
     }
 
+    const adminCashId =
+      !preserveHistoricalCash &&
+      entries.some((entry) => entry.accountCode === 'cash')
+        ? await this.ledgerRepo.adminCashAccountId(manager)
+        : undefined;
+    if (
+      adminCashId &&
+      entries.some(
+        (entry) =>
+          entry.accountCode === 'cash' &&
+          entry.cashAccountId &&
+          entry.cashAccountId !== adminCashId,
+      )
+    ) {
+      throw new BadRequestException(
+        'Cash transactions must use Admin Cash Drawer',
+      );
+    }
     const resolved = await Promise.all(
       entries.map(async (dto) => {
         const account = await this.ledgerRepo.findAccountByCode(
@@ -60,7 +87,10 @@ export class LedgerService {
           sourceId: dto.sourceId,
           description: dto.description,
           createdBy: dto.createdBy,
-          cashAccountId: dto.cashAccountId,
+          cashAccountId:
+            dto.accountCode === 'cash' && adminCashId
+              ? adminCashId
+              : dto.cashAccountId,
           bankAccountId: dto.bankAccountId,
           bankTransactionMethod: dto.bankTransactionMethod,
           chequeNumber: dto.chequeNumber,
@@ -128,8 +158,8 @@ export class LedgerService {
     return this.ledgerRepo.findBySource(sourceType, sourceId, manager);
   }
 
-  async getPartyBalances(partyIds: string[]): Promise<Map<string, string>> {
-    const rows = await this.ledgerRepo.getPartyBalances(partyIds);
+  async getPartyBalances(partyIds: string[], departmentId?: string): Promise<Map<string, string>> {
+    const rows = await this.ledgerRepo.getPartyBalances(partyIds, departmentId);
     const balances = new Map<string, string>(
       rows.map((r) => [r.partyId, Number(r.balance).toFixed(2)]),
     );
@@ -140,7 +170,7 @@ export class LedgerService {
       undefined,
       partyIds,
     )) ?? []) {
-      if (requestedParties.has(partner.partyId!))
+      if (requestedParties.has(partner.partyId!) && (!departmentId || partner.departmentId === departmentId))
         balances.set(
           partner.partyId!,
           centsToMoney(
@@ -230,6 +260,7 @@ export class LedgerService {
         appReference: entry.appReference,
       })),
       manager,
+      true,
     );
   }
 

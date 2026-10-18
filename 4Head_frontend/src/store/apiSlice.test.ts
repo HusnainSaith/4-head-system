@@ -109,3 +109,15 @@ describe("API request timeout", () => {
     }
   });
 });
+import { clearAuthCookies } from '@/lib/auth-cookies';
+describe('Session recovery during temporary backend failures',()=>{
+ it('does not erase the local profile for a temporary refresh server error',async()=>{
+  vi.mocked(clearAuthCookies).mockClear();const fetchMock=vi.fn(async(input:RequestInfo|URL)=>{const request=input as Request;return new Response(JSON.stringify({message:'temporarily unavailable'}),{status:request.url.endsWith('/auth/refresh')?503:401,headers:{'content-type':'application/json'}});});vi.stubGlobal('fetch',fetchMock);
+  const {apiSlice}=await import('./apiSlice');const api=apiSlice.injectEndpoints({endpoints:b=>({temporarySession:b.query<unknown,void>({query:()=>'/audit/temporary-session'})})});const store=configureStore({reducer:{[api.reducerPath]:api.reducer},middleware:d=>d().concat(api.middleware)});
+  try{const result=await store.dispatch(api.endpoints.temporarySession.initiate());expect(result.isError).toBe(true);expect(clearAuthCookies).not.toHaveBeenCalled();expect(fetchMock).toHaveBeenCalledTimes(2);}finally{store.dispatch(api.util.resetApiState());vi.unstubAllGlobals();}
+ });
+ it('bounds a stalled read without retrying it',async()=>{
+  vi.useFakeTimers();const fetchMock=vi.fn((input:RequestInfo|URL)=>new Promise<Response>((_resolve,reject)=>(input as Request).signal.addEventListener('abort',()=>reject((input as Request).signal.reason),{once:true})));vi.stubGlobal('fetch',fetchMock);const{apiSlice}=await import('./apiSlice');const api=apiSlice.injectEndpoints({endpoints:b=>({stalledRead:b.query<unknown,void>({query:()=>'/audit/stalled-read'})})});const store=configureStore({reducer:{[api.reducerPath]:api.reducer},middleware:d=>d().concat(api.middleware)});
+  try{const request=store.dispatch(api.endpoints.stalledRead.initiate());await vi.advanceTimersByTimeAsync(20001);const result=await request;expect(result.error).toEqual({status:'TIMEOUT_ERROR',error:expect.any(String)});expect(fetchMock).toHaveBeenCalledTimes(1);}finally{store.dispatch(api.util.resetApiState());vi.useRealTimers();vi.unstubAllGlobals();}
+ });
+});

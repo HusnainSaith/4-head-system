@@ -92,6 +92,9 @@ export type LedgerSourceType =
   | "party_adjustment";
 
 export interface PartyStatementEntry {
+  paymentAmount?: string;
+  settlementAmount?: string;
+  settlementStatus?: string;
   id: string;
   departmentId: string;
   accountId: string;
@@ -150,7 +153,10 @@ export interface RecordPaymentResponseData {
   notes?: string;
 }
 
-export interface DepartmentPayment extends Omit<RecordPaymentResponseData, "notes"> {
+export interface DepartmentPayment extends Omit<
+  RecordPaymentResponseData,
+  "notes"
+> {
   partyName: string;
   notes?: string | null;
 }

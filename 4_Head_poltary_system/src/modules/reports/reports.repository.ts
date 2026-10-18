@@ -33,6 +33,7 @@ import { PartnerSharesDto } from './dto/partner-shares.dto';
 import { SupplyRepository } from '../supply/supply.repository';
 import { SupplyPurchase } from '../supply/entities/supply-purchase.entity';
 import { pendingPayrollBonuses } from '../employees/pending-payroll-bonuses';
+import { PAYROLL_REPORT_DATE } from '../employees/payroll-report-date';
 import { EmployeeBonus } from '../employees/entities/employee-bonus.entity';
 import { salaryBalancesWithBonuses } from '../employees/salary-bonus-balance';
 
@@ -561,6 +562,9 @@ export class ReportsRepository {
     to: Date,
     excludeSourceType?: string,
   ): Promise<number> {
+    const reportDate = accountCodes.includes('payroll_expense')
+      ? PAYROLL_REPORT_DATE
+      : 'le.entry_date';
     const qb = this.ledgerRepo
       .createQueryBuilder('le')
       .leftJoin('le.account', 'acct')
@@ -569,10 +573,10 @@ export class ReportsRepository {
         'sum',
       )
       .setParameter('entryType', entryType)
-      .where('le.entry_date >= :from', {
+      .where(`${reportDate} >= :from`, {
         from: from.toISOString().slice(0, 10),
       })
-      .andWhere('le.entry_date < :to', { to: to.toISOString().slice(0, 10) })
+      .andWhere(`${reportDate} < :to`, { to: to.toISOString().slice(0, 10) })
       .andWhere('acct.code IN (:...codes)', { codes: accountCodes });
 
     if (departmentId) {

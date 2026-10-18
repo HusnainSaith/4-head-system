@@ -1,0 +1,5 @@
+const fs=require('fs'),path=require('path'),assert=require('assert/strict');
+(async()=>{const file=path.join(process.env.APPDATA,'4head-desktop/4head-desktop.log'),offset=Number(fs.readFileSync(`qa-artifacts/desktop-${require('../package.json').version}-log-offset.txt`,'utf8'));let port;
+for(let i=0;i<45;i++){const text=fs.readFileSync(file).subarray(offset).toString();port=text.match(/Application is running on: http:\/\/localhost:(\d+)/)?.[1];if(port)break;await new Promise(r=>setTimeout(r,1000));}
+assert(port,'New desktop backend not ready');const root=await fetch(`http://127.0.0.1:${port}/`,{headers:{Accept:'text/html'}});assert.equal(root.status,200);const docs=await (await fetch(`http://127.0.0.1:${port}/api/docs-json`,{headers:{Accept:'application/json'}})).json();assert(docs.paths['/parties/{id}/statement-adjustments/{entryId}'].patch);assert(docs.paths['/parties/{id}/statement-adjustments/{entryId}'].delete);assert(docs.paths['/shop/purchases/{id}'].patch);console.log('Installed frontend and new transaction routes verified');
+})().catch(e=>{console.error(e.message);process.exitCode=1});

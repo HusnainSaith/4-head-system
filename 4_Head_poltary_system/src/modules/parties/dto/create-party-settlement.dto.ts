@@ -43,7 +43,7 @@ export class CreatePartySettlementDto {
   @ApiProperty({
     minimum: 0.01,
     example: 10000,
-    description: 'Settlement amount. Must not exceed available balance on either side.',
+    description: 'Positive transfer amount. Subtracts from the first party balance and adds to the second party balance, regardless of their current signs.',
   })
   @Type(() => Number)
   @IsNumber({ allowNaN: false, allowInfinity: false, maxDecimalPlaces: 2 })

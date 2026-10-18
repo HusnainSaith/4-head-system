@@ -15,21 +15,34 @@ export class AccountsRepository {
 
   findCashByDepartment(departmentId: string): Promise<CashAccount> {
     return this.cashRepo.findOneOrFail({
-      where: { departmentId, isActive: true },
+      where: {
+        accountName: 'Admin Cash Drawer',
+        isShared: true,
+        isActive: true,
+      },
       relations: { department: true },
     });
   }
 
   findCashById(id: string): Promise<CashAccount> {
     return this.cashRepo.findOneOrFail({
-      where: { id, isActive: true },
+      where: {
+        id,
+        accountName: 'Admin Cash Drawer',
+        isShared: true,
+        isActive: true,
+      },
       relations: { department: true },
     });
   }
 
   findAllCashAccounts(): Promise<CashAccount[]> {
     return this.cashRepo.find({
-      where: { isActive: true },
+      where: {
+        accountName: 'Admin Cash Drawer',
+        isShared: true,
+        isActive: true,
+      },
       relations: { department: true },
       order: { accountName: 'ASC' },
     });

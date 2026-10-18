@@ -1,15 +1,50 @@
+import { ShopPurchasesPage } from "@/features/fresh-chicken-shop/components/ShopPurchasesPage";
+const { createShopPurchase, cancelShopPurchase } = vi.hoisted(() => ({
+  createShopPurchase: vi.fn(),
+  cancelShopPurchase: vi.fn(),
+}));
+vi.mock("@/features/fresh-chicken-shop/shopApi", () => ({
+  useListShopPurchasesQuery: () => ({
+    data: {
+      data: {
+        items: [
+          {
+            id: "shop-purchase",
+            party: { name: "External Farm" },
+            quantityKg: "100.000",
+            ratePerKg: "320.00",
+            totalAmount: "32000.00",
+            amountPaid: "0.00",
+            outstandingAmount: "32000.00",
+            status: "posted",
+            purchaseDate: "2026-10-04",
+          },
+        ],
+        pagination: {
+          page: 1,
+          totalPages: 1,
+          hasNextPage: false,
+          hasPreviousPage: false,
+        },
+      },
+    },
+  }),
+  useCreateShopPurchaseMutation: () => [createShopPurchase, {}],
+  useDeleteShopPurchaseMutation: () => [cancelShopPurchase, {}],
+}));
 import { fireEvent, render, screen } from "@testing-library/react";
 import { DepartmentCode, Role } from "@/types/enums";
 import { SupplyPurchasesPage } from "./SupplyPurchasesPage";
 import { SupplySalesPage } from "./SupplySalesPage";
 import { SupplyStockPage } from "./SupplyStockPage";
-vi.mock("@/features/accounts/components", () => ({ PaymentAccountFields: () => null }));
+vi.mock("@/features/accounts/components", () => ({
+  PaymentAccountFields: () => null,
+}));
 
 vi.mock("@/features/parties/components/DepartmentBalancesPanel", () => ({
   DepartmentBalancesPanel: () => null,
 }));
 import { SupplyReportPage } from "./SupplyReportPage";
-import { InternalTransfersPage } from "./InternalTransfersPage";
 vi.mock("@/features/invoices/components/InvoiceButton", () => ({
   InvoiceButton: () => <button type="button">Print</button>,
 }));
@@ -41,7 +76,12 @@ vi.mock("@/features/parties/partiesApi", () => ({
 }));
 vi.mock("@/features/vehicles/vehiclesApi", () => ({
   useListDepartmentsQuery: () => ({
-    data: { data: [{ id: "d1", type: "SUPPLY", name: "Supply" }] },
+    data: {
+      data: [
+        { id: "d1", type: "SUPPLY", name: "Supply" },
+        { id: "shop1", type: "FRESH_CHICKEN_SHOP", name: "Fresh Chicken Shop" },
+      ],
+    },
   }),
   useListVehiclesQuery: () => ({ data: { data: { items: [] } } }),
 }));
@@ -115,7 +155,18 @@ vi.mock("../supplyApi", () => ({
   }),
   useCreateSupplyStockWriteoffMutation: () => [vi.fn(), { isLoading: false }],
   useListSupplyStockWriteoffsQuery: () => ({
-    data: { data: [{ id: "w1", quantityKg: "1.500", reason: "spoilage", writeoffDate: "2026-07-12", valuationAmount: "337.50", note: "damaged" }] },
+    data: {
+      data: [
+        {
+          id: "w1",
+          quantityKg: "1.500",
+          reason: "spoilage",
+          writeoffDate: "2026-07-12",
+          valuationAmount: "337.50",
+          note: "damaged",
+        },
+      ],
+    },
     isLoading: false,
     isError: false,
     refetch: vi.fn(),
@@ -214,7 +265,7 @@ describe("Supply pages", () => {
     render(<SupplyStockPage />);
     expect(screen.getByText("25.000 kg")).toBeInTheDocument();
     expect(
-      screen.getByText(/internal transfers sent to the Fresh Chicken Shop/i),
+      screen.getByText(/purchases and external sales/i),
     ).toBeInTheDocument();
     expect(screen.getByText("Shrinkage records")).toBeInTheDocument();
     expect(screen.getByText("1.500 kg")).toBeInTheDocument();
@@ -223,20 +274,49 @@ describe("Supply pages", () => {
   });
   it("keeps both report views distinct", () => {
     render(<SupplyReportPage />);
-    expect(screen.getByText("External Sales Only")).toBeInTheDocument();
+    expect(screen.getByText("Profit and Loss")).toBeInTheDocument();
     expect(
-      screen.getByText("Including Internal Transfers"),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("Revenue")).toHaveLength(2);
-    expect(screen.getByText(/300/)).toBeInTheDocument();
-    expect(screen.getAllByText("10.000 kg")).toHaveLength(2);
-  });
-  it("renders partial transfer balances and settlement action", () => {
-    render(<InternalTransfersPage />);
-    expect(screen.getByText("partially settled")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Settle" })).toBeInTheDocument();
-    expect(screen.getByText(/400/)).toBeInTheDocument();
+      screen.queryByText("Including Internal Transfers"),
+    ).not.toBeInTheDocument();
+    expect(screen.getAllByText("Revenue")).toHaveLength(1);
+    expect(screen.getByText(/100/)).toBeInTheDocument();
+    expect(screen.getAllByText("10.000 kg")).toHaveLength(1);
   });
 });
 
-vi.mock("@/features/departments/departmentsApi", () => ({ useListDepartmentsQuery: () => ({ data: { data: [{ id: "d1", type: "SUPPLY", name: "Supply" }] } }) }));
+vi.mock("@/features/departments/departmentsApi", () => ({
+  useListDepartmentsQuery: () => ({
+    data: {
+      data: [
+        { id: "d1", type: "SUPPLY", name: "Supply" },
+        { id: "shop1", type: "FRESH_CHICKEN_SHOP", name: "Fresh Chicken Shop" },
+      ],
+    },
+  }),
+}));
+
+describe("Shop external purchase page", () => {
+  it("renders external purchases with shop-specific titles and searches farm suppliers", () => {
+    render(<ShopPurchasesPage />);
+    expect(
+      screen.getByRole("heading", { name: "Fresh Chicken Shop Purchases" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("External Farm")).toBeInTheDocument();
+    expect(
+      screen.getByRole("textbox", { name: "Search transactions" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /record purchase/i }));
+    expect(listParties).toHaveBeenCalledWith(
+      expect.objectContaining({ departmentId: "shop1", type: "farm" }),
+      { skip: false },
+    );
+    expect(screen.getByPlaceholderText("Search parties…")).toBeInTheDocument();
+  });
+  it("uses the shop cancellation endpoint rather than Supply", () => {
+    cancelShopPurchase.mockReturnValue({ unwrap: () => Promise.resolve({}) });
+    render(<ShopPurchasesPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel purchase" }));
+    expect(cancelShopPurchase).toHaveBeenCalledWith("shop-purchase");
+  });
+});

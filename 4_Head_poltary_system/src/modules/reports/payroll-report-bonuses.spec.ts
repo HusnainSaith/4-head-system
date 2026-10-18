@@ -44,9 +44,14 @@ describe('payroll report bonuses and calendar boundaries', () => {
         new Date('2026-10-02'),
       ),
     ).toBe(30010);
-    expect(query.andWhere).toHaveBeenCalledWith('le.entry_date < :to', {
-      to: '2026-10-02',
-    });
+    expect(query.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining(
+        'make_date(run.period_year, run.period_month, 1)',
+      ),
+      {
+        to: '2026-10-02',
+      },
+    );
     expect(manager.query).toHaveBeenCalledWith(
       expect.stringContaining('LEFT JOIN salary_runs'),
       ['d', '1970-01-01', '2026-10-02'],

@@ -94,42 +94,7 @@ describe("supplyApi contracts", () => {
     });
     expect(body).not.toHaveProperty("commissionPerKg");
   });
-  it("keeps transfer endpoints distinct and settles with the exact body", async () => {
-    await dispatch(
-      api.endpoints.createInternalTransfer.initiate({
-        quantityKg: 1,
-        internalRatePerKg: 200,
-        transferDate: "2026-07-12",
-      }),
-    );
-    await dispatch(
-      api.endpoints.settleInternalTransfer.initiate({
-        id: "t1",
-        body: {
-          amount: 100,
-          settlementDate: "2026-07-13",
-          paymentMethod: "bank",
-        },
-      }),
-    );
-    expect(requests).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          url: "/supply/internal-transfers",
-          method: "POST",
-        }),
-        expect.objectContaining({
-          url: "/supply/internal-transfers/t1/settle",
-          method: "POST",
-          body: {
-            amount: 100,
-            settlementDate: "2026-07-13",
-            paymentMethod: "bank",
-          },
-        }),
-      ]),
-    );
-  });
+
   it("gets stock and parses dual report route", async () => {
     await dispatch(api.endpoints.getSupplyStock.initiate());
     await dispatch(
